@@ -1,7 +1,6 @@
 """Timeline analysis MCP tool."""
 
 from datetime import datetime
-from os.path import split
 from typing import List, Dict, Any, Optional
 
 import structlog
@@ -15,15 +14,12 @@ from ..shared import mcp
 logger = structlog.get_logger(__name__)
 
 
-
-
-
 def validate_username(username: str) -> str:
     """Validate GitHub username."""
     if not username or not username.strip():
-        raise ValueError("用户名不能为空")
+        raise ValueError("Username cannot be empty")
     if len(username) > 39:
-        raise ValueError("用户名长度不能超过39个字符")
+        raise ValueError("Username length cannot exceed 39 characters")
     return username.strip()
 
 
@@ -34,47 +30,48 @@ async def get_user_starred_repositories(
     limit: int = 100,
     cursor: Optional[str] = None
 ) -> StarredRepositoriesResponse:
-    """获取指定GitHub用户收藏的仓库列表。如果未提供username，则获取当前认证用户的收藏仓库。"""
+    """Get starred repositories for a specified GitHub user. If username is not provided, get starred repositories for the current authenticated user."""
     
-    # 如果没有提供username，获取当前用户信息
+    # If no username provided, get current user info
     if username is None:
         from .. import shared
         if not shared.github_client:
-            await ctx.error("GitHub客户端未初始化")
-            raise GitHubAPIError("GitHub客户端未初始化")
+            await ctx.error("GitHub client not initialized")
+            raise GitHubAPIError("GitHub client not initialized")
         
         try:
             current_user = await shared.github_client.get_current_user()
             if not current_user or not current_user.get("login"):
-                await ctx.error("无法获取当前用户信息")
-                raise GitHubAPIError("无法获取当前用户信息")
+                await ctx.error("Unable to get current user info")
+                raise GitHubAPIError("Unable to get current user info")
             username = current_user["login"]
-            await ctx.info(f"使用当前认证用户: {username}")
+            await ctx.info(f"Using current authenticated user: {username}")
         except Exception as e:
-            await ctx.error(f"获取当前用户信息失败: {str(e)}")
-            raise GitHubAPIError(f"获取当前用户信息失败: {str(e)}")
+            await ctx.error(f"Failed to get current user info: {str(e)}")
+            raise GitHubAPIError(f"Failed to get current user info: {str(e)}")
     else:
         try:
             username = validate_username(username)
         except ValueError as e:
-            await ctx.error(f"参数验证失败: {str(e)}")
+            await ctx.error(f"Parameter validation failed: {str(e)}")
             raise ValidationError(str(e))
     
     if limit < 1 or limit > 100:
-        await ctx.error(f"limit参数必须在1-100之间: limit={limit}")
-        raise ValidationError("limit参数必须在1-100之间")
+        await ctx.error(f"limit parameter must be between 1-100: limit={limit}")
+        raise ValidationError("limit parameter must be between 1-100")
     
-    await ctx.info(f"开始获取用户收藏仓库列表: username={username}, limit={limit}, cursor={cursor}")
+    await ctx.info(f"Starting to fetch user starred repositories: username={username}, limit={limit}, cursor={cursor}")
     
     from .. import shared
     if not shared.github_client:
-        await ctx.error("GitHub客户端未初始化")
-        raise GitHubAPIError("GitHub客户端未初始化")
+        await ctx.error("GitHub client not initialized")
+        raise GitHubAPIError("GitHub client not initialized")
     
     try:
-        # 调用GitHub客户端获取收藏仓库
+        # Call GitHub client to get starred repositories with cursor support
         starred_data = await shared.github_client.get_user_starred_repositories(
-            username=username
+            username=username,
+            cursor=cursor
         )
 
         edges = starred_data.get("edges", [])
@@ -118,7 +115,7 @@ async def get_user_starred_repositories(
                 repo = Repository.model_validate(repo_dict)
                 repositories.append(repo)
             except Exception as e:
-                await ctx.info(f"解析仓库数据失败: {str(e)}")
+                await ctx.info(f"Failed to parse repository data: {str(e)}")
                 await ctx.info(f"node data: {node}")
                 continue
         page_info = starred_data["pageInfo"]
@@ -131,15 +128,14 @@ async def get_user_starred_repositories(
             next_cursor=next_cursor
         )
         
-        await ctx.info(f"成功获取用户收藏仓库列表: username={username}, count={len(repositories)}, has_more={has_more}")
+        await ctx.info(f"Successfully fetched user starred repositories: username={username}, count={len(repositories)}, has_more={has_more}")
         await ctx.info(response)
 
-        # 返回可序列化的字典而不是 Pydantic 模型对象
         return response
     
     except GitHubAPIError:
         raise
     except Exception as e:
-        await ctx.error(f"获取用户收藏仓库失败: error={str(e)}, username={username}")
-        raise GitHubAPIError(f"获取用户收藏仓库失败: {str(e)}")
+        await ctx.error(f"Failed to fetch user starred repositories: error={str(e)}, username={username}")
+        raise GitHubAPIError(f"Failed to fetch user starred repositories: {str(e)}")
 

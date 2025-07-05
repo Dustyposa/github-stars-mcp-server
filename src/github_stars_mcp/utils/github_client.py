@@ -170,17 +170,25 @@ class GitHubClient:
                 logger.error("Request timeout", error=str(e))
                 raise GitHubAPIError(f"Request timeout: {str(e)}")
     
-    async def get_user_starred_repositories(self, username: str) -> List[Dict[str, Any]]:
-        """Get starred repositories for a user."""
-        logger.info("Fetching starred repositories", username=username)
+    async def get_user_starred_repositories(self, username: str, cursor: Optional[str] = None) -> Dict[str, Any]:
+        """Get starred repositories for a user with pagination support.
         
-        variables = {"username": username, "cursor": None}
+        Args:
+            username: GitHub username
+            cursor: Pagination cursor for fetching next page
+            
+        Returns:
+            Dictionary containing starred repositories data with pagination info
+        """
+        logger.info("Fetching starred repositories", username=username, cursor=cursor)
+        
+        variables = {"username": username, "cursor": cursor}
         data = await self.query(STARRED_REPOS_QUERY, variables)
         
         user_data = data.get("user")
         if not user_data:
             logger.warning("User not found", username=username)
-            return []
+            return {"edges": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
             
         starred_data = user_data.get("starredRepositories", {})
         return starred_data

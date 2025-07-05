@@ -1,18 +1,16 @@
-"""Shared instances and resources.
-
-This module contains shared instances that need to be accessed by multiple modules
-to avoid circular import issues.
-"""
+"""Shared instances and resources for GitHub Stars MCP Server."""
 
 from typing import Optional
 from cachetools import TTLCache
 from fastmcp import FastMCP
 
-# Initialize FastMCP server
+from github_stars_mcp.utils.github_client import GitHubClient
+
+# FastMCP server instance
 mcp = FastMCP("GitHub Stars MCP Server")
 
-# Initialize cache
+# API response cache
 api_cache = TTLCache(maxsize=128, ttl=300)
 
-# Global GitHub client instance (will be initialized in server.py)
-github_client: Optional[object] = None
+# GitHub client instance
+github_client: Optional[GitHubClient] = None

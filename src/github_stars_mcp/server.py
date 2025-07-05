@@ -1,33 +1,19 @@
-"""MCP server main entry point.
+"""MCP server main entry point."""
 
-This module implements the FastMCP server with all registered tools
-and handles the main server lifecycle.
-"""
-
-import asyncio
 import logging
 import sys
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict
 
 import structlog
-from cachetools import TTLCache
-from cachetools_async import cached
 from fastmcp import Context
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from .config import settings
-from .exceptions import (
-    GitHubStarsMCPError,
-    ConfigurationError,
-    CacheError,
-    GitHubAPIError,
-    ValidationError,
-)
-from .models import Repository
+from .exceptions import ConfigurationError, CacheError, GitHubAPIError
 from .utils.github_client import GitHubClient
-from .shared import mcp, api_cache, github_client
+from .shared import mcp, api_cache
 
-# Import tools to register them with the MCP server
+# Import tools to register them
 from . import tools
 
 
@@ -63,15 +49,7 @@ class HealthStatus(BaseModel):
     cache_max_size: int
 
 
-class StarredRepositoriesResponse(BaseModel):
-    """用户收藏仓库列表响应模型。"""
-    repositories: List[Repository] = Field(description="仓库列表")
-    total_count: int = Field(description="总数量")
-    has_more: bool = Field(description="是否还有更多数据")
-    next_cursor: Optional[str] = Field(default=None, description="下一页游标")
 
-
-# GetStarredRepositoriesParams is now defined in tools/timeline_analyzer.py
 
 
 @mcp.tool
@@ -142,81 +120,13 @@ async def clear_cache(ctx: Context) -> Dict[str, Any]:
         await ctx.error("Failed to clear cache")
         raise CacheError(f"Failed to clear cache: {str(e)}")
 
-
-# get_user_starred_repositories tool is now defined in tools/timeline_analyzer.py
-
-
-async def initialize_server() -> None:
-    """Initialize the MCP server and its dependencies."""
-    from .shared import github_client
-    
-    try:
-        # Validate configuration
-        if not settings.github_token:
-            raise ConfigurationError(
-                "GitHub token is required. Please set GITHUB_TOKEN environment variable."
-            )
-        
-        # Initialize GitHub client
-        import github_stars_mcp.shared as shared
-        shared.github_client = GitHubClient(
-            token=settings.github_token,
-            cache=api_cache
-        )
-        
-        logger.info(
-            "MCP server initialized successfully",
-            cache_max_size=api_cache.maxsize,
-            cache_ttl=300,
-            log_level=settings.log_level
-        )
-    
-    except Exception as e:
-        logger.error("Failed to initialize MCP server", error=str(e))
-        raise
-
-
-async def shutdown_server() -> None:
-    """Clean up resources when shutting down the server."""
-    global github_client
-    
-    try:
-        # Close GitHub client if it exists
-        if github_client:
-            await github_client.close()
-            github_client = None
-        
-        # Clear cache
-        api_cache.clear()
-        
-        logger.info("MCP server shutdown completed")
-    
-    except Exception as e:
-        logger.error("Error during server shutdown", error=str(e))
-
-
-# Note: Exception handling is done through middleware in FastMCP
-# Custom exceptions will be automatically handled by the framework
-
-
-# Note: FastMCP handles server lifecycle automatically
-# Custom initialization can be done in tool functions as needed
-logger.info("GitHub Stars MCP Server initialized")
-
-# Initialize GitHub client if token is available
+# Initialize GitHub client
 if settings.github_token:
-    from .utils.github_client import GitHubClient
     from . import shared
     shared.github_client = GitHubClient(settings.github_token)
-    logger.info("GitHub client initialized successfully")
+    logger.info("GitHub client initialized")
 else:
-    logger.warning("No GitHub token provided, some features may be limited")
-
-# Initialize cache if Redis URL is provided
-if hasattr(settings, 'redis_url') and settings.redis_url:
-    logger.info(f"Redis cache configured at {settings.redis_url}")
-else:
-    logger.info("No Redis URL provided, using in-memory cache")
+    logger.warning("No GitHub token provided")
 
 
 def main() -> None:

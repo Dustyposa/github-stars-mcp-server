@@ -1,23 +1,10 @@
-"""Custom exception classes for GitHub Stars MCP Server.
-
-This module defines all custom exceptions used throughout the application,
-including GitHub API related exceptions and MCP server specific errors.
-"""
+"""Custom exception classes for GitHub Stars MCP Server."""
 
 from typing import Optional, Any, Dict
 
 
 class GitHubStarsMCPError(Exception):
-    """Base exception class for GitHub Stars MCP Server.
-    
-    This is the root exception class for all custom exceptions in the application.
-    All other custom exceptions should inherit from this class.
-    
-    Attributes:
-        message: Human-readable error message
-        error_code: Optional error code for programmatic handling
-        details: Optional dictionary containing additional error details
-    """
+    """Base exception class for GitHub Stars MCP Server."""
     
     def __init__(
         self, 
@@ -37,15 +24,7 @@ class GitHubStarsMCPError(Exception):
 
 
 class GitHubAPIError(GitHubStarsMCPError):
-    """Base exception class for GitHub API related errors.
-    
-    This exception is raised when there are issues communicating with the GitHub API,
-    including network errors, API errors, and response parsing errors.
-    
-    Attributes:
-        status_code: HTTP status code from the API response (if available)
-        response_data: Raw response data from the API (if available)
-    """
+    """Base exception class for GitHub API related errors."""
     
     def __init__(
         self,
@@ -61,15 +40,7 @@ class GitHubAPIError(GitHubStarsMCPError):
 
 
 class RateLimitError(GitHubAPIError):
-    """Exception raised when GitHub API rate limit is exceeded.
-    
-    This exception is raised when the application hits GitHub's API rate limits.
-    It includes information about when the rate limit will reset.
-    
-    Attributes:
-        reset_time: Unix timestamp when the rate limit will reset
-        remaining_requests: Number of requests remaining in the current window
-    """
+    """Exception raised when GitHub API rate limit is exceeded."""
     
     def __init__(
         self,
@@ -84,11 +55,7 @@ class RateLimitError(GitHubAPIError):
 
 
 class AuthenticationError(GitHubAPIError):
-    """Exception raised when GitHub API authentication fails.
-    
-    This exception is raised when the provided GitHub token is invalid,
-    expired, or lacks the necessary permissions.
-    """
+    """Exception raised when GitHub API authentication fails."""
     
     def __init__(
         self,
@@ -99,14 +66,7 @@ class AuthenticationError(GitHubAPIError):
 
 
 class ValidationError(GitHubStarsMCPError):
-    """Exception raised when data validation fails.
-    
-    This exception is raised when input data doesn't meet the expected format
-    or constraints, such as invalid usernames, malformed requests, etc.
-    
-    Attributes:
-        field_errors: Dictionary mapping field names to their validation errors
-    """
+    """Exception raised when data validation fails."""
     
     def __init__(
         self,
@@ -119,11 +79,7 @@ class ValidationError(GitHubStarsMCPError):
 
 
 class ConfigurationError(GitHubStarsMCPError):
-    """Exception raised when there are configuration issues.
-    
-    This exception is raised when required configuration is missing
-    or invalid, such as missing environment variables or invalid settings.
-    """
+    """Exception raised when there are configuration issues."""
     
     def __init__(
         self,
@@ -134,11 +90,7 @@ class ConfigurationError(GitHubStarsMCPError):
 
 
 class CacheError(GitHubStarsMCPError):
-    """Exception raised when cache operations fail.
-    
-    This exception is raised when there are issues with cache operations,
-    such as Redis connection failures or cache corruption.
-    """
+    """Exception raised when cache operations fail."""
     
     def __init__(
         self,

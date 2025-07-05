@@ -1,8 +1,4 @@
-"""Configuration management module.
-
-This module handles all configuration settings for the GitHub Stars MCP Server,
-including GitHub personal access token authentication, Redis connection, and other service settings.
-"""
+"""Configuration management for GitHub Stars MCP Server."""
 
 from typing import Optional
 from pydantic import field_validator, Field
@@ -10,16 +6,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings configuration.
-    
-    This class manages all configuration settings for the GitHub Stars MCP Server.
-    Settings can be loaded from environment variables or .env file.
-    
-    Attributes:
-        github_token: GitHub personal access token for API authentication
-        redis_url: Optional Redis connection URL for caching
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    """
+    """Application settings with environment variable support."""
     
     github_token: str
     redis_url: Optional[str] = "redis://localhost:6379/0"

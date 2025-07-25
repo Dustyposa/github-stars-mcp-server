@@ -38,11 +38,7 @@ class RepositoryDetails(BaseModel):
     """Detailed repository information including README content."""
     model_config = ConfigDict(populate_by_name=True)
     
-    repository: StartedRepository = Field(description="Basic repository information")
     readme_content: Optional[str] = Field(default=None, description="README content")
-    readme_size: Optional[int] = Field(default=None, description="README file size in bytes")
-    has_readme: bool = Field(default=False, description="Whether repository has README")
-    fetch_error: Optional[str] = Field(default=None, description="Error message if fetch failed")
 
 
 class BatchRepositoryDetailsResponse(BaseModel):

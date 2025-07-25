@@ -80,15 +80,19 @@ query GetCurrentUser {
 }
 """
 
-README_QUERY = """
-query GetRepositoryReadme($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    id
-    nameWithOwner
-    url
-    readme {
-      ... on Blob {
-        text
+README_QUERY_BY_ID = """
+query GetReadmeById($id: ID!) {
+  node(id: $id) {
+    ... on Repository {
+      id
+      nameWithOwner
+      
+      # 修正后的部分：使用 object 字段按路径表达式查找文件
+      readme: object(expression: "HEAD:README.md") {
+        # 如果该对象是一个文件 (Blob)，则获取其文本内容
+        ... on Blob {
+          text
+        }
       }
     }
   }
@@ -268,99 +272,38 @@ class GitHubClient:
             logger.error("Error fetching current user info", error=str(e))
             return None
     
-    async def get_repository_readme(self, owner: str, name: str) -> Dict[str, Any]:
+    async def get_repository_readme(self, repo_id: str) -> Dict[str, Any]:
         """Get README content for a repository.
         
         Args:
-            owner: Repository owner
-            name: Repository name
-            
+            repo_id: Repository id
+
         Returns:
             Dictionary containing README content and metadata
         """
-        logger.info("Fetching repository README", owner=owner, name=name)
+        logger.info("Fetching repository README", repo_id=repo_id)
         
-        variables = {"owner": owner, "name": name}
-        
+
         try:
-            data = await self.query(README_QUERY, variables)
-            
-            repo_data = data.get("repository")
-            if not repo_data:
-                logger.warning("Repository not found", owner=owner, name=name)
+            data = await self.query(README_QUERY_BY_ID, {"id": repo_id})
+            logger.debug("Repository data", repo_data=data)
+
+            node_data = data.get("node")
+            if not node_data:
+                logger.warning("Repository not found", repo_id=repo_id)
                 return {
                     "content": None,
-                    "size": None,
-                    "has_readme": False,
-                    "error": "Repository not found"
                 }
-            
-            readme_obj = repo_data.get("object")
-            if readme_obj and readme_obj.get("text"):
-                logger.info("README.md found", owner=owner, name=name, size=readme_obj.get("byteSize"))
-                return {
-                    "content": readme_obj["text"],
-                    "size": readme_obj.get("byteSize"),
-                    "has_readme": True,
-                    "error": None
-                }
-            
-            # Try to find alternative README files
-            alternatives = repo_data.get("readmeAlternatives", {})
-            entries = alternatives.get("entries", [])
-            
-            readme_files = [
-                entry["name"] for entry in entries 
-                if entry["type"] == "blob" and entry["name"].lower().startswith("readme")
-            ]
-            
-            if readme_files:
-                # Try the first alternative README file
-                alt_readme = readme_files[0]
-                logger.info("Trying alternative README file", owner=owner, name=name, filename=alt_readme)
-                
-                # Query for the alternative README
-                alt_query = f"""
-                query GetAlternativeReadme($owner: String!, $name: String!) {{
-                  repository(owner: $owner, name: $name) {{
-                    object(expression: "HEAD:{alt_readme}") {{
-                      ... on Blob {{
-                        text
-                        byteSize
-                      }}
-                    }}
-                  }}
-                }}
-                """
-                
-                alt_data = await self.query(alt_query, variables)
-                alt_repo = alt_data.get("repository", {})
-                alt_obj = alt_repo.get("object")
-                
-                if alt_obj and alt_obj.get("text"):
-                    logger.info("Alternative README found", owner=owner, name=name, filename=alt_readme)
-                    return {
-                        "content": alt_obj["text"],
-                        "size": alt_obj.get("byteSize"),
-                        "has_readme": True,
-                        "error": None
-                    }
-            
-            logger.info("No README found", owner=owner, name=name)
+
+
             return {
-                "content": None,
-                "size": None,
-                "has_readme": False,
-                "error": None
+                "content": node_data["readme"].get("text"),
             }
             
         except Exception as e:
-            logger.error("Failed to fetch README", owner=owner, name=name, error=str(e))
+            logger.error("Failed to fetch README", error=str(e))
             return {
                 "content": None,
-                "size": None,
-                "has_readme": False,
-                "error": str(e)
             }
 
 

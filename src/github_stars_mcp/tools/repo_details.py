@@ -31,25 +31,14 @@ def validate_repository_name(repository_name: str) -> str:
 @mcp.tool
 async def get_repo_details(
     ctx: Context,
-    repository_name: str
+    repo_id: str
 ) -> RepositoryDetails:
-    """Fetch single repository details including README content.
-
-    Args:
-        repository_name: Repository name in format 'owner/repo'
-
-    Returns:
-        RepositoryDetails with repository information and README content
-
-    Raises:
-        GitHubAPIError: If GitHub API request fails
-        ValidationError: If repository name format is invalid
+    """
+    为一个指定的 GitHub 仓库检索其详细信息，包括 README.md 文件的纯文本内容。当需要深入了解某一个特定项目时，或者当用户明确询问关于单个项目的信息时，使用此工具。
     """
     try:
-        # Validate repository name
-        validated_name = validate_repository_name(repository_name)
-        
-        await ctx.info(f"Fetching details for repository: {validated_name}")
+
+        await ctx.info(f"Fetching details for repository: {repo_id}")
         
         # Create semaphore for consistency with batch function
         semaphore = asyncio.Semaphore(1)
@@ -57,13 +46,13 @@ async def get_repo_details(
         # Use the existing fetch function from batch_repo_details
         from .. import shared
         result = await fetch_single_repository_details(
-            ctx, validated_name, shared.github_client, semaphore
+            ctx, repo_id, shared.github_client, semaphore
         )
         
         if result is None:
-            raise GitHubAPIError(f"Failed to fetch details for repository: {validated_name}")
+            raise GitHubAPIError(f"Failed to fetch details for repository: {repo_id}")
         
-        await ctx.info(f"Successfully fetched details for {validated_name}")
+        await ctx.info(f"Successfully fetched details for {repo_id}")
         return result
         
     except ValueError as e:

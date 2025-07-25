@@ -42,69 +42,32 @@ def validate_repository_names(repository_names: list[str]) -> list[str]:
 
 async def fetch_single_repository_details(
     ctx: Context,
-    repo_name: str,
+    repo_id: str,
     github_client,
     semaphore: asyncio.Semaphore
 ) -> RepositoryDetails | None:
     """Fetch details for a single repository with concurrency control."""
     async with semaphore:
         try:
-            await ctx.info(f"Fetching details for repository: {repo_name}")
+            await ctx.info(f"Fetching details for repository: {repo_id}")
 
-            # Parse owner and name
-            owner, name = repo_name.split("/", 1)
 
-            # Create basic repository object
-            repo_data = {
-                "nameWithOwner": repo_name,
-                "name": name,
-                "owner": owner,
-                "description": None,
-                "stargazerCount": 0,
-                "url": f"https://github.com/{repo_name}",
-                "primaryLanguage": None,
-                "starredAt": None,
-                "pushedAt": None,
-                "diskUsage": None,
-                "repositoryTopics": [],
-                "languages": []
-            }
-
-            # Get README content
-            readme_data = None
-            readme_size = None
-            has_readme = False
-            fetch_error = None
             
             try:
-                readme_result = await github_client.get_repository_readme(owner, name)
-                readme_data = readme_result.get("content")
-                readme_size = readme_result.get("size")
-                has_readme = readme_result.get("has_readme", False)
-                fetch_error = readme_result.get("error")
-                
-                if has_readme:
-                    await ctx.info(f"Successfully fetched README for {repo_name}")
-                else:
-                    await ctx.info(f"No README found for {repo_name}")
-            except Exception as e:
-                await ctx.info(f"Failed to fetch README for {repo_name}: {str(e)}")
-                fetch_error = str(e)
+                readme_result = await github_client.get_repository_readme(repo_id)
 
+            except Exception as e:
+                await ctx.info(f"Failed to fetch README for {repo_id}: {str(e)}")
+            logger.debug(f"Readme content for {repo_id}: {readme_result}")
             # Create Repository and RepositoryDetails objects
-            repository = Repository.model_validate(repo_data)
             repo_details = RepositoryDetails(
-                repository=repository,
-                readme_content=readme_data,
-                readme_size=readme_size,
-                has_readme=has_readme,
-                fetch_error=fetch_error
+                readme_content=readme_result["content"],
             )
 
             return repo_details
 
         except Exception as e:
-            await ctx.error(f"Failed to fetch details for {repo_name}: {str(e)}")
+            await ctx.error(f"Failed to fetch details for {repo_id}: {str(e)}")
             return None
 
 

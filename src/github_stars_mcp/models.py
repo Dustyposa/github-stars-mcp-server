@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, ConfigDict
 class StartedRepository(BaseModel):
     """GitHub repository model."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
+    repo_id :str = Field(description="Repository ID", alias="id")
     name_with_owner: str = Field(alias='nameWithOwner', description="Repository full name (owner/repo)")
     name: str = Field(description="Repository name")
     owner: str = Field(description="Repository owner")

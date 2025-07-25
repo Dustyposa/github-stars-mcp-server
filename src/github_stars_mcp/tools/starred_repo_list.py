@@ -76,6 +76,7 @@ async def get_user_starred_repositories(
 
             name, owner = name_with_owner.split("/", maxsplit=1)
             repo = StartedRepository(**{
+                "id": repo_data["id"],
                 "nameWithOwner": name_with_owner,
                 "name": name,
                 "owner": owner,

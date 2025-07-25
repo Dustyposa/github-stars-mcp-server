@@ -35,6 +35,7 @@ query GetStarredRepositories($username: String!, $cursor: String) {
         cursor
         starredAt
         node {
+          id
           nameWithOwner
           description
           stargazerCount
@@ -82,18 +83,12 @@ query GetCurrentUser {
 README_QUERY = """
 query GetRepositoryReadme($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
-    object(expression: "HEAD:README.md") {
+    id
+    nameWithOwner
+    url
+    readme {
       ... on Blob {
         text
-        byteSize
-      }
-    }
-    readmeAlternatives: object(expression: "HEAD:") {
-      ... on Tree {
-        entries {
-          name
-          type
-        }
       }
     }
   }

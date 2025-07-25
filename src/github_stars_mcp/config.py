@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
     github_token: str
-    redis_url: Optional[str] = "redis://localhost:6379/0"
+    cache_dir: str = ".cache"
     log_level: str = "INFO"
     dangerously_omit_auth: bool = True
     

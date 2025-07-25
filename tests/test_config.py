@@ -16,24 +16,24 @@ class TestSettings:
         """Test Settings creation with valid values."""
         settings = Settings(
             github_token="ghp_test123",
-            redis_url="redis://localhost:6379/0",
+            cache_dir=".test_cache",
             log_level="INFO"
         )
         
         assert settings.github_token == "ghp_test123"
-        assert settings.redis_url == "redis://localhost:6379/0"
+        assert settings.cache_dir == ".test_cache"
         assert settings.log_level == "INFO"
 
     def test_settings_with_environment_variables(self, monkeypatch):
         """Test Settings loading from environment variables."""
         monkeypatch.setenv("GITHUB_TOKEN", "env_token_456")
-        monkeypatch.setenv("REDIS_URL", "redis://env:6379/1")
+        monkeypatch.setenv("CACHE_DIR", ".env_cache")
         monkeypatch.setenv("LOG_LEVEL", "DEBUG")
         
         settings = Settings()
         
         assert settings.github_token == "env_token_456"
-        assert settings.redis_url == "redis://env:6379/1"
+        assert settings.cache_dir == ".env_cache"
         assert settings.log_level == "DEBUG"
 
     def test_settings_default_values(self):
@@ -42,12 +42,17 @@ class TestSettings:
             settings = Settings(github_token="required_token")
             
             assert settings.github_token == "required_token"
-            assert settings.redis_url == "redis://localhost:6379/0"
+            assert settings.cache_dir == ".cache"
             assert settings.log_level == "INFO"
 
-    def test_settings_missing_required_token(self):
+    def test_settings_missing_required_token(self, tmp_path, monkeypatch):
         """Test Settings validation when required github_token is missing."""
+        # Create empty .env file to avoid loading from project .env
+        env_file = tmp_path / ".env"
+        env_file.write_text("")
+        
         with patch.dict(os.environ, {}, clear=True):
+            monkeypatch.chdir(tmp_path)
             with pytest.raises(ValidationError) as exc_info:
                 Settings()
             
@@ -82,28 +87,28 @@ class TestSettings:
         )
         assert settings.log_level == "DEBUG"
 
-    def test_settings_redis_url_validation(self):
-        """Test Settings with various Redis URL formats."""
-        valid_urls = [
-            "redis://localhost:6379/0",
-            "redis://user:pass@localhost:6379/1",
-            "redis://redis.example.com:6379/2",
-            "rediss://secure.redis.com:6380/0"
+    def test_settings_cache_dir_validation(self):
+        """Test Settings with various cache directory formats."""
+        valid_dirs = [
+            ".cache",
+            "/tmp/cache",
+            "./data/cache",
+            "cache_dir"
         ]
         
-        for url in valid_urls:
+        for cache_dir in valid_dirs:
             settings = Settings(
                 github_token="test_token",
-                redis_url=url
+                cache_dir=cache_dir
             )
-            assert settings.redis_url == url
+            assert settings.cache_dir == cache_dir
 
     def test_settings_from_env_file(self, tmp_path, monkeypatch):
         """Test Settings loading from .env file."""
         env_file = tmp_path / ".env"
         env_file.write_text(
             "GITHUB_TOKEN=file_token_789\n"
-            "REDIS_URL=redis://file:6379/2\n"
+            "CACHE_DIR=.file_cache\n"
             "LOG_LEVEL=WARNING\n"
         )
         
@@ -114,7 +119,7 @@ class TestSettings:
             settings = Settings()
             
             assert settings.github_token == "file_token_789"
-            assert settings.redis_url == "redis://file:6379/2"
+            assert settings.cache_dir == ".file_cache"
             assert settings.log_level == "WARNING"
 
     def test_settings_env_var_precedence_over_file(self, tmp_path, monkeypatch):

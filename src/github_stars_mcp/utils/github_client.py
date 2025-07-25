@@ -79,6 +79,27 @@ query GetCurrentUser {
 }
 """
 
+README_QUERY = """
+query GetRepositoryReadme($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    object(expression: "HEAD:README.md") {
+      ... on Blob {
+        text
+        byteSize
+      }
+    }
+    readmeAlternatives: object(expression: "HEAD:") {
+      ... on Tree {
+        entries {
+          name
+          type
+        }
+      }
+    }
+  }
+}
+"""
+
 
 class GitHubClient:
     """Async GitHub API client with GraphQL support.
@@ -94,6 +115,9 @@ class GitHubClient:
             token: GitHub personal access token. If not provided, uses settings.github_token
         """
         self.token = token or settings.github_token
+        if not self.token:
+            raise ValueError("GitHub token is required")
+            
         self.base_url = "https://api.github.com/graphql"
         self.headers = {
             "Authorization": f"Bearer {self.token}",
@@ -101,6 +125,11 @@ class GitHubClient:
             "User-Agent": "github-stars-mcp-server/1.0"
         }
         
+        # Cache for current user info
+        self._current_user_cache: Optional[Dict[str, Any]] = None
+        self._current_user_cache_time: Optional[float] = None
+        self._cache_ttl = 300  # 5 minutes
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -174,20 +203,35 @@ class GitHubClient:
         """Get starred repositories for a user with pagination support.
         
         Args:
-            username: GitHub username
+            username: GitHub username. If empty, uses authenticated user.
             cursor: Pagination cursor for fetching next page
-            
+
         Returns:
             Dictionary containing starred repositories data with pagination info
         """
-        logger.info("Fetching starred repositories", username=username, cursor=cursor)
         
-        variables = {"username": username, "cursor": cursor}
+        # If username is empty, use authenticated user
+        actual_username = username
+        if not username or username.strip() == "":
+            current_user = await self.get_current_user()
+            if not current_user:
+                logger.error("Cannot get current user for empty username")
+                raise AuthenticationError("Failed to get authenticated user information")
+            actual_username = current_user.get("login")
+
+            if not actual_username:
+                logger.error("Current user has no login field")
+                raise AuthenticationError("Current user information is incomplete")
+            logger.info("Using authenticated user", username=actual_username)
+            
+        logger.info("Fetching starred repositories", username=actual_username, cursor=cursor)
+        
+        variables = {"username": actual_username, "cursor": cursor}
         data = await self.query(STARRED_REPOS_QUERY, variables)
-        
+        logger.debug("Starred repositories data", data=data)
         user_data = data.get("user")
         if not user_data:
-            logger.warning("User not found", username=username)
+            logger.warning("User not found", username=actual_username)
             return {"edges": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
             
         starred_data = user_data.get("starredRepositories", {})
@@ -195,22 +239,134 @@ class GitHubClient:
 
 
     async def get_current_user(self) -> Optional[Dict[str, Any]]:
-        """Get current authenticated user information.
+        """Get current authenticated user information with caching.
         
         Returns:
             Current user information or None if authentication fails
         """
-        logger.info("Fetching current user info")
+        import time
         
-        data = await self.query(CURRENT_USER_QUERY)
+        # Check cache first
+        current_time = time.time()
+        if (self._current_user_cache is not None and 
+            self._current_user_cache_time is not None and 
+            current_time - self._current_user_cache_time < self._cache_ttl):
+            logger.info("Using cached current user info", username=self._current_user_cache.get("login"))
+            return self._current_user_cache
         
-        user_data = data.get("viewer")
-        if user_data:
-            logger.info("Current user info fetched successfully", username=user_data.get("login"))
-        else:
-            logger.warning("Failed to fetch current user info")
+        logger.info("Fetching current user info from API")
+        
+        try:
+            data = await self.query(CURRENT_USER_QUERY)
             
-        return user_data
+            user_data = data.get("viewer")
+            if user_data:
+                # Cache the result
+                self._current_user_cache = user_data
+                self._current_user_cache_time = current_time
+                logger.info("Current user info fetched and cached successfully", username=user_data.get("login"))
+            else:
+                logger.warning("Failed to fetch current user info")
+                
+            return user_data
+        except Exception as e:
+            logger.error("Error fetching current user info", error=str(e))
+            return None
+    
+    async def get_repository_readme(self, owner: str, name: str) -> Dict[str, Any]:
+        """Get README content for a repository.
+        
+        Args:
+            owner: Repository owner
+            name: Repository name
+            
+        Returns:
+            Dictionary containing README content and metadata
+        """
+        logger.info("Fetching repository README", owner=owner, name=name)
+        
+        variables = {"owner": owner, "name": name}
+        
+        try:
+            data = await self.query(README_QUERY, variables)
+            
+            repo_data = data.get("repository")
+            if not repo_data:
+                logger.warning("Repository not found", owner=owner, name=name)
+                return {
+                    "content": None,
+                    "size": None,
+                    "has_readme": False,
+                    "error": "Repository not found"
+                }
+            
+            readme_obj = repo_data.get("object")
+            if readme_obj and readme_obj.get("text"):
+                logger.info("README.md found", owner=owner, name=name, size=readme_obj.get("byteSize"))
+                return {
+                    "content": readme_obj["text"],
+                    "size": readme_obj.get("byteSize"),
+                    "has_readme": True,
+                    "error": None
+                }
+            
+            # Try to find alternative README files
+            alternatives = repo_data.get("readmeAlternatives", {})
+            entries = alternatives.get("entries", [])
+            
+            readme_files = [
+                entry["name"] for entry in entries 
+                if entry["type"] == "blob" and entry["name"].lower().startswith("readme")
+            ]
+            
+            if readme_files:
+                # Try the first alternative README file
+                alt_readme = readme_files[0]
+                logger.info("Trying alternative README file", owner=owner, name=name, filename=alt_readme)
+                
+                # Query for the alternative README
+                alt_query = f"""
+                query GetAlternativeReadme($owner: String!, $name: String!) {{
+                  repository(owner: $owner, name: $name) {{
+                    object(expression: "HEAD:{alt_readme}") {{
+                      ... on Blob {{
+                        text
+                        byteSize
+                      }}
+                    }}
+                  }}
+                }}
+                """
+                
+                alt_data = await self.query(alt_query, variables)
+                alt_repo = alt_data.get("repository", {})
+                alt_obj = alt_repo.get("object")
+                
+                if alt_obj and alt_obj.get("text"):
+                    logger.info("Alternative README found", owner=owner, name=name, filename=alt_readme)
+                    return {
+                        "content": alt_obj["text"],
+                        "size": alt_obj.get("byteSize"),
+                        "has_readme": True,
+                        "error": None
+                    }
+            
+            logger.info("No README found", owner=owner, name=name)
+            return {
+                "content": None,
+                "size": None,
+                "has_readme": False,
+                "error": None
+            }
+            
+        except Exception as e:
+            logger.error("Failed to fetch README", owner=owner, name=name, error=str(e))
+            return {
+                "content": None,
+                "size": None,
+                "has_readme": False,
+                "error": str(e)
+            }
 
 
 

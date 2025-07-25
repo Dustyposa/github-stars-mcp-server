@@ -26,7 +26,7 @@ def test_settings() -> Settings:
     """Create test settings with mock values."""
     return Settings(
         github_token="test_token_123",
-        redis_url="redis://localhost:6379/1",
+        cache_dir=".test_cache",
         log_level="DEBUG"
     )
 
@@ -63,23 +63,18 @@ def sample_repository_data() -> Dict[str, Any]:
     """Sample repository data for testing."""
     return {
         "nameWithOwner": "octocat/Hello-World",
+        "name": "Hello-World",
+        "owner": "octocat",
         "description": "This your first repo!",
         "stargazerCount": 1420,
         "url": "https://github.com/octocat/Hello-World",
-        "primaryLanguage": {
-            "name": "Python",
-            "color": "#3572A5"
-        },
+        "primaryLanguage": "Python",
         "createdAt": "2011-01-26T19:01:12Z",
         "updatedAt": "2011-01-26T19:14:43Z",
         "pushedAt": "2011-01-26T19:06:43Z",
         "isPrivate": False,
         "isFork": False,
-        "isArchived": False,
-        "owner": {
-            "login": "octocat",
-            "avatarUrl": "https://github.com/images/error/octocat_happy.gif"
-        }
+        "isArchived": False
     }
 
 
@@ -176,5 +171,5 @@ def mock_fastmcp_context() -> MagicMock:
 def setup_test_environment(monkeypatch):
     """Setup test environment variables."""
     monkeypatch.setenv("GITHUB_TOKEN", "test_token_123")
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/1")
+    monkeypatch.setenv("CACHE_DIR", ".test_cache")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")

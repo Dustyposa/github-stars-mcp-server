@@ -18,7 +18,7 @@ class TestGitHubClient:
         """Create test settings for GitHub client."""
         return Settings(
             github_token="test_token_123",
-            redis_url="redis://localhost:6379/1"
+            cache_dir=".test_cache"
         )
 
     @pytest.fixture
@@ -335,7 +335,7 @@ class TestGitHubClientIntegration:
         """Create test settings for GitHub client."""
         return Settings(
             github_token="test_token_123",
-            redis_url="redis://localhost:6379/1"
+            cache_dir=".test_cache"
         )
     
     @pytest.fixture

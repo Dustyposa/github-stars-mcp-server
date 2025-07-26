@@ -99,6 +99,26 @@ query GetReadmeById($id: ID!) {
 }
 """
 
+README_QUERY_BY_IDS = """
+query GetMultipleReadmesByIds($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    # 对每个节点，如果它是一个仓库...
+    ... on Repository {
+      id
+      nameWithOwner
+      
+      # --- 这里是应用了相同修正的部分 ---
+      readme: object(expression: "HEAD:README.md") {
+        ... on Blob {
+          text
+        }
+      }
+      # ------------------------------------
+    }
+  }
+}
+"""
+
 
 class GitHubClient:
     """Async GitHub API client with GraphQL support.
@@ -306,6 +326,41 @@ class GitHubClient:
                 "content": None,
             }
 
+    async def get_multi_repository_readme(self, repo_ids: list[str]) -> Dict[str, dict[str, str]]:
+        """Get README content for multi repositories.
+
+        Args:
+            repo_ids: list of Repository id
+
+        Returns:
+            Dictionary containing README content and metadata
+        """
+        logger.info("Fetching repository README", repo_ids=repo_ids)
+
+        try:
+            data = await self.query(README_QUERY_BY_IDS, {"ids": repo_ids})
+
+            nodes_data = data["nodes"]
+            if not nodes_data:
+                logger.warning("Repository not found", repo_id=repo_ids)
+                return {
+
+                }
+            logger.debug("Repository nodes_data", nodes_data=nodes_data)
+
+            return {
+                node["id"]: {
+                    "readme_content": node["readme"]["text"],
+                    # "nameWithOwner": node["nameWithOwner"],
+                }
+                for node in nodes_data
+            }
+
+        except Exception as e:
+            logger.error("Failed to fetch README", error=str(e))
+            return {
+                "content": None,
+            }
 
 
 # Global client instance

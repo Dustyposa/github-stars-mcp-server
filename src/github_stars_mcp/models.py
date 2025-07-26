@@ -44,11 +44,7 @@ class RepositoryDetails(BaseModel):
 class BatchRepositoryDetailsResponse(BaseModel):
     """Response model for batch repository details."""
     model_config = ConfigDict(populate_by_name=True)
-    
-    repository_details: List[RepositoryDetails] = Field(description="List of repository details")
-    total_count: int = Field(description="Total number of repositories processed")
-    success_count: int = Field(description="Number of successfully processed repositories")
-    error_count: int = Field(description="Number of repositories with errors")
+    data : dict[str, RepositoryDetails] = Field(description="List of repository details")
 
 
 class LanguageStats(BaseModel):

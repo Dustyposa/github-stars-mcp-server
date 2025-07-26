@@ -70,85 +70,53 @@ async def fetch_single_repository_details(
             await ctx.error(f"Failed to fetch details for {repo_id}: {str(e)}")
             return None
 
+async def fetch_multi_repository_details(
+    ctx: Context, repo_ids: list[str], github_client, semaphore: asyncio.Semaphore
+) -> BatchRepositoryDetailsResponse:
+    """Fetch details for multi repository with concurrency control."""
+    async with semaphore:
+        try:
+
+            try:
+                readme_results = await github_client.get_multi_repository_readme(repo_ids)
+
+            except Exception as e:
+                await ctx.info(f"Failed to fetch README for {repo_ids}: {str(e)}")
+
+            return BatchRepositoryDetailsResponse(data=readme_results)
+
+        except Exception as e:
+            await ctx.error(f"Failed to fetch details for {repo_ids}: {str(e)}")
+            return None
+
 
 @mcp.tool
 async def get_batch_repo_details(
     ctx: Context,
-    repository_names: list[str],
+    repo_ids: list[str],
     max_concurrent: int = 10
 ) -> BatchRepositoryDetailsResponse:
-    """Batch fetch repository details including README content.
-
-    Args:
-        repository_names: List of repository names in format 'owner/repo'
-        max_concurrent: Maximum number of concurrent requests (default: 10, max: 20)
-
-    Returns:
-        BatchRepositoryDetailsResponse with repository details and processing statistics
+    """
+    接收一个仓库标识符的列表，并一次性批量返回所有这些仓库的详细信息，包括它们的 README 内容。当你需要比较少数几个特定项目，或者在获取到一个仓库列表后需要进一步获取它们的详细内容时，使用此工具以提高效率。
     """
 
-    # Validate parameters
-    try:
-        validated_names = validate_repository_names(repository_names)
-    except ValueError as e:
-        await ctx.error(f"Parameter validation failed: {str(e)}")
-        raise ValidationError(str(e))
 
     if max_concurrent < 1 or max_concurrent > 20:
         await ctx.error(f"max_concurrent must be between 1-20: max_concurrent={max_concurrent}")
         raise ValidationError("max_concurrent must be between 1-20")
 
-    # Remove duplicates while preserving order
-    unique_names = list(dict.fromkeys(validated_names))
-
-    await ctx.info(f"Starting batch repository details fetch: count={len(unique_names)}, max_concurrent={max_concurrent}")
-
     from .. import shared
     if not shared.github_client:
         await ctx.error("GitHub client not initialized")
         raise GitHubAPIError("GitHub client not initialized")
+    semaphore = asyncio.Semaphore(1)
 
-    # Create semaphore for concurrency control
-    semaphore = asyncio.Semaphore(max_concurrent)
-
-    # Create tasks for all repositories
-    tasks = [
-        fetch_single_repository_details(ctx, repo_name, shared.github_client, semaphore)
-        for repo_name in unique_names
-    ]
-
+    result = await fetch_multi_repository_details(
+        ctx, repo_ids, shared.github_client, semaphore
+    )
     try:
-        # Execute all tasks concurrently
-        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Process results
-        successful_details = []
-        failed_repositories = []
-
-        for i, result in enumerate(results):
-            repo_name = unique_names[i]
-
-            if isinstance(result, Exception):
-                await ctx.error(f"Task failed for {repo_name}: {str(result)}")
-                failed_repositories.append(repo_name)
-            elif result is None:
-                failed_repositories.append(repo_name)
-            else:
-                successful_details.append(result)
-
-        response = BatchRepositoryDetailsResponse(
-            repository_details=successful_details,
-            total_count=len(unique_names),
-            success_count=len(successful_details),
-            error_count=len(failed_repositories)
-        )
-
-        await ctx.info(
-            f"Completed batch repository details fetch: "
-            f"total={len(unique_names)}, success={len(successful_details)}, failed={len(failed_repositories)}"
-        )
-
-        return response
+        return result
 
     except Exception as e:
         await ctx.error(f"Batch repository details fetch failed: {str(e)}")

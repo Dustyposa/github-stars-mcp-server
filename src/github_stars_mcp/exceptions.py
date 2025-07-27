@@ -72,9 +72,3 @@ class ValidationError(GitHubStarsMCPError):
         super().__init__(message, error_code="VALIDATION_ERROR", **kwargs)
         self.field_errors = field_errors or {}
 
-
-class ConfigurationError(GitHubStarsMCPError):
-    """Exception raised when there are configuration issues."""
-
-    def __init__(self, message: str = "Configuration error", **kwargs) -> None:
-        super().__init__(message, error_code="CONFIGURATION_ERROR", **kwargs)

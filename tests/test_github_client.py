@@ -17,8 +17,7 @@ class TestGitHubClient:
     def client_settings(self):
         """Create test settings for GitHub client."""
         return Settings(
-            github_token="test_token_123",
-            cache_dir=".test_cache"
+            github_token="test_token_123"
         )
 
     @pytest.fixture
@@ -334,8 +333,7 @@ class TestGitHubClientIntegration:
     def client_settings(self):
         """Create test settings for GitHub client."""
         return Settings(
-            github_token="test_token_123",
-            cache_dir=".test_cache"
+            github_token="test_token_123"
         )
     
     @pytest.fixture

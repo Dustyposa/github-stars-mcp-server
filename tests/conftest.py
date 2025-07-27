@@ -26,7 +26,6 @@ def test_settings() -> Settings:
     """Create test settings with mock values."""
     return Settings(
         github_token="test_token_123",
-        cache_dir=".test_cache",
         log_level="DEBUG"
     )
 

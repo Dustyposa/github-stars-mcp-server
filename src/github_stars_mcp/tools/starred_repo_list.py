@@ -33,30 +33,16 @@ class GetStarredRepoListRequest(BaseModel):
     )
 
 
-@mcp.tool
-async def get_user_starred_repositories(
+async def _get_user_starred_repositories_impl(
     ctx: Context,
     username: str = "",
     cursor: str = ""
 ) -> StarredRepositoriesResponse:
-    """Get a list of repositories starred by a user.
+    """Internal implementation for getting starred repositories.
     
-    Args:
-        username: GitHub username to get starred repositories for. If empty, uses authenticated user.
-        limit: Maximum number of repositories to return (1-100, default: 50)
-        cursor: Pagination cursor for getting next page of results
-        
-    Returns:
-        Dict containing list of starred repositories with pagination info.
-        
-    Raises:
-        AuthenticationError: If GitHub token is invalid or missing
-        GitHubAPIError: If GitHub API request fails
+    This function contains the core logic that can be called from other tools.
     """
-
-
     try:
-
         from .. import shared
 
         if not shared.github_client:
@@ -119,3 +105,25 @@ async def get_user_starred_repositories(
     except Exception as e:
         await ctx.error(f"Unexpected error getting starred repositories: {str(e)}")
         raise GitHubAPIError(f"Failed to get starred repositories: {str(e)}")
+
+
+@mcp.tool
+async def get_user_starred_repositories(
+    ctx: Context,
+    username: str = "",
+    cursor: str = ""
+) -> StarredRepositoriesResponse:
+    """Get a list of repositories starred by a user.
+    
+    Args:
+        username: GitHub username to get starred repositories for. If empty, uses authenticated user.
+        cursor: Pagination cursor for getting next page of results
+        
+    Returns:
+        Dict containing list of starred repositories with pagination info.
+        
+    Raises:
+        AuthenticationError: If GitHub token is invalid or missing
+        GitHubAPIError: If GitHub API request fails
+    """
+    return await _get_user_starred_repositories_impl(ctx, username, cursor)

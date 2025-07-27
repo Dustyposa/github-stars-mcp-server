@@ -11,14 +11,13 @@ from ..cache.decorators import multi_level_cache
 from ..exceptions import GitHubAPIError
 from ..models import (
     AnalysisBundle,
-    BatchRepositoryDetailsResponse,
     StarredRepositoriesResponse,
     StarredRepositoriesWithReadmeResponse,
     StartedRepoWithReadme,
 )
 from ..shared import mcp
-from .batch_repo_details import get_batch_repo_details
-from .starred_repo_list import get_user_starred_repositories
+from .batch_repo_details import _get_batch_repo_details_impl
+from .starred_repo_list import _get_user_starred_repositories_impl
 
 logger = structlog.get_logger(__name__)
 
@@ -33,7 +32,7 @@ def chunk_list(iterable, chunk_size):
 
 
 @mcp.tool
-@multi_level_cache(ttl=1800, file_ttl=7200)  # 30 min L1, 2 hours L2
+# @multi_level_cache(ttl=1800, file_ttl=7200)  # 30 min L1, 2 hours L2
 async def create_full_analysis_bundle(
     ctx: Context,
     username: str | None = None,
@@ -78,21 +77,26 @@ async def create_full_analysis_bundle(
     try:
         # Step 1: Get starred repositories list
         await ctx.info("Fetching starred repositories list")
-        starred_data = await get_user_starred_repositories(
+        starred_data = await _get_user_starred_repositories_impl(
             ctx=ctx,
-            username=username or "",
+            username=username,
         )
         for repo in starred_data.repositories:
-            stated_repo_map[repo.id] = repo
-        while starred_data.has_next_page or len(stated_repo_map.keys()) < max_repositories:
-            await ctx.info("Fetching next page of starred repositories")
-            starred_data = await get_user_starred_repositories(
+            stated_repo_map[repo.repo_id] = StartedRepoWithReadme.model_construct(
+                **repo.model_dump()
+            )
+
+        while starred_data.has_next_page:
+            if len(stated_repo_map.keys()) >= max_repositories:
+                break
+            await ctx.info(f"Fetching next page of starred repositories, lens: {len(stated_repo_map.keys())}")
+            starred_data = await _get_user_starred_repositories_impl(
                 ctx=ctx,
-                username=username or "",
+                username=username,
                 cursor=starred_data.end_cursor
             )
             for repo in starred_data.repositories:
-                stated_repo_map[repo.id] = StartedRepoWithReadme(
+                stated_repo_map[repo.repo_id] = StartedRepoWithReadme.model_construct(
                     **repo.model_dump()
                 )
 
@@ -108,7 +112,7 @@ async def create_full_analysis_bundle(
 
         async def fetch_chunk_details(ctx, repo_ids_chunk):
             async with semaphore:
-                return await get_batch_repo_details(
+                return await _get_batch_repo_details_impl(
                     ctx=ctx, repo_ids=repo_ids_chunk,
                 )
 
@@ -118,8 +122,12 @@ async def create_full_analysis_bundle(
             for chunk in chunked_repo_ids
         ]
         chunk_results = await asyncio.gather(*tasks)
+        i = 1
         for result in chunk_results:
             for id_, readme_schema in result.data.items():
+                i += 1
+                if i <= 10:
+                    logger.debug(f"{id_=}, {readme_schema=}")
                 stated_repo_map[id_].readme_content = readme_schema.readme_content
 
         return StarredRepositoriesWithReadmeResponse(

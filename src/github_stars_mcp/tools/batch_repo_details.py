@@ -71,23 +71,40 @@ async def fetch_single_repository_details(
             return None
 
 async def fetch_multi_repository_details(
-    ctx: Context, repo_ids: list[str], github_client, semaphore: asyncio.Semaphore
+    ctx: Context, repo_ids: list[str], github_client,
 ) -> BatchRepositoryDetailsResponse:
     """Fetch details for multi repository with concurrency control."""
-    async with semaphore:
-        try:
+    readme_results = {}
+    try:
+        readme_results = await github_client.get_multi_repository_readme(repo_ids)
 
-            try:
-                readme_results = await github_client.get_multi_repository_readme(repo_ids)
+    except Exception as e:
+        await ctx.info(f"Failed to fetch README for {repo_ids}: {str(e)}")
 
-            except Exception as e:
-                await ctx.info(f"Failed to fetch README for {repo_ids}: {str(e)}")
+    return BatchRepositoryDetailsResponse(data=readme_results)
 
-            return BatchRepositoryDetailsResponse(data=readme_results)
 
-        except Exception as e:
-            await ctx.error(f"Failed to fetch details for {repo_ids}: {str(e)}")
-            return None
+async def _get_batch_repo_details_impl(
+    ctx: Context,
+    repo_ids: list[str],
+) -> BatchRepositoryDetailsResponse:
+    """Internal implementation for getting batch repository details.
+    
+    This function contains the core logic that can be called from other tools.
+    """
+    from .. import shared
+    if not shared.github_client:
+        await ctx.error("GitHub client not initialized")
+        raise GitHubAPIError("GitHub client not initialized")
+
+    result = await fetch_multi_repository_details(
+        ctx, repo_ids, shared.github_client
+    )
+    try:
+        return result
+    except Exception as e:
+        await ctx.error(f"Batch repository details fetch failed: {str(e)}")
+        raise GitHubAPIError(f"Batch repository details fetch failed: {str(e)}")
 
 
 @mcp.tool
@@ -98,20 +115,4 @@ async def get_batch_repo_details(
     """
     接收一个仓库标识符的列表，并一次性批量返回所有这些仓库的详细信息，包括它们的 README 内容。当你需要比较少数几个特定项目，或者在获取到一个仓库列表后需要进一步获取它们的详细内容时，使用此工具以提高效率。
     """
-
-    from .. import shared
-    if not shared.github_client:
-        await ctx.error("GitHub client not initialized")
-        raise GitHubAPIError("GitHub client not initialized")
-    semaphore = asyncio.Semaphore(1)
-
-    result = await fetch_multi_repository_details(
-        ctx, repo_ids, shared.github_client, semaphore
-    )
-    try:
-
-        return result
-
-    except Exception as e:
-        await ctx.error(f"Batch repository details fetch failed: {str(e)}")
-        raise GitHubAPIError(f"Batch repository details fetch failed: {str(e)}")
+    return await _get_batch_repo_details_impl(ctx, repo_ids)

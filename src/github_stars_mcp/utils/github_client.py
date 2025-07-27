@@ -317,7 +317,7 @@ class GitHubClient:
 
 
             return {
-                "content": node_data["readme"].get("text"),
+                "content": node_data.get("readme", {}).get("text"),
             }
             
         except Exception as e:
@@ -346,21 +346,18 @@ class GitHubClient:
                 return {
 
                 }
-            logger.debug("Repository nodes_data", nodes_data=nodes_data)
-
+            logger.debug("Repository readme nodes_data", nodes_data=nodes_data[:10])
             return {
                 node["id"]: {
-                    "readme_content": node["readme"]["text"],
+                    "readme_content": node["readme"]["text"] if node["readme"] else None,
                     # "nameWithOwner": node["nameWithOwner"],
                 }
                 for node in nodes_data
             }
 
         except Exception as e:
-            logger.error("Failed to fetch README", error=str(e))
-            return {
-                "content": None,
-            }
+            logger.error("Failed to fetch READMES", error=str(e))
+            return {}
 
 
 # Global client instance

@@ -1,19 +1,18 @@
 """GitHub API client module."""
 
-import asyncio
-from typing import Dict, Any, Optional, List
+from typing import Any
 
 import httpx
 import structlog
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
 )
 
 from ..config import settings
-from ..exceptions import GitHubAPIError, AuthenticationError, RateLimitError
+from ..exceptions import AuthenticationError, GitHubAPIError, RateLimitError
 
 # Configure structured logging
 logger = structlog.get_logger(__name__)
@@ -57,8 +56,8 @@ query GetStarredRepositories($username: String!, $cursor: String) {
             edges {
               size
               node {
-                name 
-                color 
+                name
+                color
               }
             }
           }
@@ -86,7 +85,7 @@ query GetReadmeById($id: ID!) {
     ... on Repository {
       id
       nameWithOwner
-      
+
       # 修正后的部分：使用 object 字段按路径表达式查找文件
       readme: object(expression: "HEAD:README.md") {
         # 如果该对象是一个文件 (Blob)，则获取其文本内容
@@ -106,7 +105,7 @@ query GetMultipleReadmesByIds($ids: [ID!]!) {
     ... on Repository {
       id
       nameWithOwner
-      
+
       # --- 这里是应用了相同修正的部分 ---
       readme: object(expression: "HEAD:README.md") {
         ... on Blob {
@@ -122,48 +121,50 @@ query GetMultipleReadmesByIds($ids: [ID!]!) {
 
 class GitHubClient:
     """Async GitHub API client with GraphQL support.
-    
+
     This client provides methods for querying GitHub's GraphQL API
     with proper authentication, error handling, and retry logic.
     """
-    
-    def __init__(self, token: Optional[str] = None):
+
+    def __init__(self, token: str | None = None):
         """Initialize GitHub client.
-        
+
         Args:
             token: GitHub personal access token. If not provided, uses settings.github_token
         """
         self.token = token or settings.github_token
         if not self.token:
             raise ValueError("GitHub token is required")
-            
+
         self.base_url = "https://api.github.com/graphql"
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Accept": "application/vnd.github.v4+json",
-            "User-Agent": "github-stars-mcp-server/1.0"
+            "User-Agent": "github-stars-mcp-server/1.0",
         }
-        
+
         # Cache for current user info
-        self._current_user_cache: Optional[Dict[str, Any]] = None
-        self._current_user_cache_time: Optional[float] = None
+        self._current_user_cache: dict[str, Any] | None = None
+        self._current_user_cache_time: float | None = None
         self._cache_ttl = 300  # 5 minutes
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException))
+        retry=retry_if_exception_type((httpx.RequestError, httpx.TimeoutException)),
     )
-    async def query(self, query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def query(
+        self, query: str, variables: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute a GraphQL query against GitHub API.
-        
+
         Args:
             query: GraphQL query string
             variables: Optional query variables
-            
+
         Returns:
             GraphQL response data
-            
+
         Raises:
             AuthenticationError: If authentication fails
             RateLimitError: If rate limit is exceeded
@@ -172,55 +173,72 @@ class GitHubClient:
         payload = {"query": query}
         if variables:
             payload["variables"] = variables
-            
-        logger.info("Executing GraphQL query", query_type=query.split()[1] if query.split() else "unknown")
-        
+
+        logger.info(
+            "Executing GraphQL query",
+            query_type=query.split()[1] if query.split() else "unknown",
+        )
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(
-                    self.base_url,
-                    headers=self.headers,
-                    json=payload
+                    self.base_url, headers=self.headers, json=payload
                 )
-                
+
                 # Handle HTTP errors
                 if response.status_code == 401:
-                    logger.error("Authentication failed", status_code=response.status_code)
+                    logger.error(
+                        "Authentication failed", status_code=response.status_code
+                    )
                     raise AuthenticationError("Invalid GitHub token")
                 elif response.status_code == 403:
                     # Check if it's a rate limit error
                     if "rate limit" in response.text.lower():
-                        logger.warning("Rate limit exceeded", status_code=response.status_code)
+                        logger.warning(
+                            "Rate limit exceeded", status_code=response.status_code
+                        )
                         raise RateLimitError("GitHub API rate limit exceeded")
                     else:
-                        logger.error("Forbidden access", status_code=response.status_code)
+                        logger.error(
+                            "Forbidden access", status_code=response.status_code
+                        )
                         raise GitHubAPIError(f"Forbidden: {response.text}")
                 elif response.status_code >= 400:
-                    logger.error("HTTP error", status_code=response.status_code, response_text=response.text)
-                    raise GitHubAPIError(f"HTTP {response.status_code}: {response.text}")
-                
+                    logger.error(
+                        "HTTP error",
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+                    raise GitHubAPIError(
+                        f"HTTP {response.status_code}: {response.text}"
+                    )
+
                 data = response.json()
-                
+
                 # Handle GraphQL errors
                 if "errors" in data:
                     errors = data["errors"]
                     logger.error("GraphQL errors", errors=errors)
-                    error_messages = [error.get("message", "Unknown error") for error in errors]
+                    error_messages = [
+                        error.get("message", "Unknown error") for error in errors
+                    ]
                     raise GitHubAPIError(f"GraphQL errors: {'; '.join(error_messages)}")
-                
+
                 logger.info("GraphQL query successful")
                 return data.get("data", {})
-                
+
             except httpx.RequestError as e:
                 logger.error("Request error", error=str(e))
-                raise GitHubAPIError(f"Request failed: {str(e)}")
+                raise GitHubAPIError(f"Request failed: {str(e)}") from e
             except httpx.TimeoutException as e:
                 logger.error("Request timeout", error=str(e))
-                raise GitHubAPIError(f"Request timeout: {str(e)}")
-    
-    async def get_user_starred_repositories(self, username: str, cursor: Optional[str] = None) -> Dict[str, Any]:
+                raise GitHubAPIError(f"Request timeout: {str(e)}") from e
+
+    async def get_user_starred_repositories(
+        self, username: str, cursor: str | None = None
+    ) -> dict[str, Any]:
         """Get starred repositories for a user with pagination support.
-        
+
         Args:
             username: GitHub username. If empty, uses authenticated user.
             cursor: Pagination cursor for fetching next page
@@ -228,23 +246,27 @@ class GitHubClient:
         Returns:
             Dictionary containing starred repositories data with pagination info
         """
-        
+
         # If username is empty, use authenticated user
         actual_username = username
         if not username or username.strip() == "":
             current_user = await self.get_current_user()
             if not current_user:
                 logger.error("Cannot get current user for empty username")
-                raise AuthenticationError("Failed to get authenticated user information")
+                raise AuthenticationError(
+                    "Failed to get authenticated user information"
+                )
             actual_username = current_user.get("login")
 
             if not actual_username:
                 logger.error("Current user has no login field")
                 raise AuthenticationError("Current user information is incomplete")
             logger.info("Using authenticated user", username=actual_username)
-            
-        logger.info("Fetching starred repositories", username=actual_username, cursor=cursor)
-        
+
+        logger.info(
+            "Fetching starred repositories", username=actual_username, cursor=cursor
+        )
+
         variables = {"username": actual_username, "cursor": cursor}
         data = await self.query(STARRED_REPOS_QUERY, variables)
         logger.debug("Starred repositories data", data=data)
@@ -252,49 +274,56 @@ class GitHubClient:
         if not user_data:
             logger.warning("User not found", username=actual_username)
             return {"edges": [], "pageInfo": {"hasNextPage": False, "endCursor": None}}
-            
+
         starred_data = user_data.get("starredRepositories", {})
         return starred_data
 
-
-    async def get_current_user(self) -> Optional[Dict[str, Any]]:
+    async def get_current_user(self) -> dict[str, Any] | None:
         """Get current authenticated user information with caching.
-        
+
         Returns:
             Current user information or None if authentication fails
         """
         import time
-        
+
         # Check cache first
         current_time = time.time()
-        if (self._current_user_cache is not None and 
-            self._current_user_cache_time is not None and 
-            current_time - self._current_user_cache_time < self._cache_ttl):
-            logger.info("Using cached current user info", username=self._current_user_cache.get("login"))
+        if (
+            self._current_user_cache is not None
+            and self._current_user_cache_time is not None
+            and current_time - self._current_user_cache_time < self._cache_ttl
+        ):
+            logger.info(
+                "Using cached current user info",
+                username=self._current_user_cache.get("login"),
+            )
             return self._current_user_cache
-        
+
         logger.info("Fetching current user info from API")
-        
+
         try:
             data = await self.query(CURRENT_USER_QUERY)
-            
+
             user_data = data.get("viewer")
             if user_data:
                 # Cache the result
                 self._current_user_cache = user_data
                 self._current_user_cache_time = current_time
-                logger.info("Current user info fetched and cached successfully", username=user_data.get("login"))
+                logger.info(
+                    "Current user info fetched and cached successfully",
+                    username=user_data.get("login"),
+                )
             else:
                 logger.warning("Failed to fetch current user info")
-                
+
             return user_data
         except Exception as e:
             logger.error("Error fetching current user info", error=str(e))
             return None
-    
-    async def get_repository_readme(self, repo_id: str) -> Dict[str, Any]:
+
+    async def get_repository_readme(self, repo_id: str) -> dict[str, Any]:
         """Get README content for a repository.
-        
+
         Args:
             repo_id: Repository id
 
@@ -302,7 +331,6 @@ class GitHubClient:
             Dictionary containing README content and metadata
         """
         logger.info("Fetching repository README", repo_id=repo_id)
-        
 
         try:
             data = await self.query(README_QUERY_BY_ID, {"id": repo_id})
@@ -315,18 +343,19 @@ class GitHubClient:
                     "content": None,
                 }
 
-
             return {
                 "content": node_data.get("readme", {}).get("text"),
             }
-            
+
         except Exception as e:
             logger.error("Failed to fetch README", error=str(e))
             return {
                 "content": None,
             }
 
-    async def get_multi_repository_readme(self, repo_ids: list[str]) -> Dict[str, dict[str, str]]:
+    async def get_multi_repository_readme(
+        self, repo_ids: list[str]
+    ) -> dict[str, dict[str, str]]:
         """Get README content for multi repositories.
 
         Args:
@@ -343,13 +372,13 @@ class GitHubClient:
             nodes_data = data["nodes"]
             if not nodes_data:
                 logger.warning("Repository not found", repo_id=repo_ids)
-                return {
-
-                }
+                return {}
             logger.debug("Repository readme nodes_data", nodes_data=nodes_data[:10])
             return {
                 node["id"]: {
-                    "readme_content": node["readme"]["text"] if node["readme"] else None,
+                    "readme_content": node["readme"]["text"]
+                    if node["readme"]
+                    else None,
                     # "nameWithOwner": node["nameWithOwner"],
                 }
                 for node in nodes_data
@@ -362,4 +391,3 @@ class GitHubClient:
 
 # Global client instance
 client = GitHubClient()
-

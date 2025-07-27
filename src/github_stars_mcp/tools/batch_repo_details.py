@@ -1,12 +1,11 @@
 """Batch repository details MCP tool."""
 
 import asyncio
-from datetime import datetime
 
 import structlog
 from fastmcp import Context
 
-from ..exceptions import GitHubAPIError, ValidationError
+from ..exceptions import GitHubAPIError
 from ..models import BatchRepositoryDetailsResponse, RepositoryDetails
 from ..shared import mcp
 
@@ -29,11 +28,15 @@ def validate_repository_names(repository_names: list[str]) -> list[str]:
 
         repo_name = repo_name.strip()
         if "/" not in repo_name:
-            raise ValueError(f"Invalid repository name format: {repo_name}. Expected format: owner/repo")
+            raise ValueError(
+                f"Invalid repository name format: {repo_name}. Expected format: owner/repo"
+            )
 
         parts = repo_name.split("/")
         if len(parts) != 2 or not parts[0] or not parts[1]:
-            raise ValueError(f"Invalid repository name format: {repo_name}. Expected format: owner/repo")
+            raise ValueError(
+                f"Invalid repository name format: {repo_name}. Expected format: owner/repo"
+            )
 
         validated_names.append(repo_name)
 
@@ -41,18 +44,13 @@ def validate_repository_names(repository_names: list[str]) -> list[str]:
 
 
 async def fetch_single_repository_details(
-    ctx: Context,
-    repo_id: str,
-    github_client,
-    semaphore: asyncio.Semaphore
+    ctx: Context, repo_id: str, github_client, semaphore: asyncio.Semaphore
 ) -> RepositoryDetails | None:
     """Fetch details for a single repository with concurrency control."""
     async with semaphore:
         try:
             await ctx.info(f"Fetching details for repository: {repo_id}")
 
-
-            
             try:
                 readme_result = await github_client.get_repository_readme(repo_id)
 
@@ -70,8 +68,11 @@ async def fetch_single_repository_details(
             await ctx.error(f"Failed to fetch details for {repo_id}: {str(e)}")
             return None
 
+
 async def fetch_multi_repository_details(
-    ctx: Context, repo_ids: list[str], github_client,
+    ctx: Context,
+    repo_ids: list[str],
+    github_client,
 ) -> BatchRepositoryDetailsResponse:
     """Fetch details for multi repository with concurrency control."""
     readme_results = {}
@@ -89,22 +90,21 @@ async def _get_batch_repo_details_impl(
     repo_ids: list[str],
 ) -> BatchRepositoryDetailsResponse:
     """Internal implementation for getting batch repository details.
-    
+
     This function contains the core logic that can be called from other tools.
     """
     from .. import shared
+
     if not shared.github_client:
         await ctx.error("GitHub client not initialized")
         raise GitHubAPIError("GitHub client not initialized")
 
-    result = await fetch_multi_repository_details(
-        ctx, repo_ids, shared.github_client
-    )
+    result = await fetch_multi_repository_details(ctx, repo_ids, shared.github_client)
     try:
         return result
     except Exception as e:
         await ctx.error(f"Batch repository details fetch failed: {str(e)}")
-        raise GitHubAPIError(f"Batch repository details fetch failed: {str(e)}")
+        raise GitHubAPIError(f"Batch repository details fetch failed: {str(e)}") from e
 
 
 @mcp.tool

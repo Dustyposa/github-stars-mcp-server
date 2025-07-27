@@ -1,8 +1,7 @@
 """Shared instances and resources for GitHub Stars MCP Server."""
 
-import sys
 import logging
-from typing import Optional
+import sys
 
 import structlog
 from cachetools import TTLCache
@@ -15,6 +14,7 @@ from fastmcp import FastMCP
 
 # Restore stdout after FastMCP import
 sys.stdout = _original_stdout
+
 
 # Configure logging immediately when module is imported
 def _configure_logging():
@@ -31,7 +31,9 @@ def _configure_logging():
         return
 
     # [核心修复] 将所有日志输出到文件，而不是 stderr
-    file_handler = logging.FileHandler("mcp_server_debug.log", mode="w", encoding="utf-8")
+    file_handler = logging.FileHandler(
+        "mcp_server_debug.log", mode="w", encoding="utf-8"
+    )
     file_handler.setFormatter(
         logging.Formatter("[%(asctime)s] %(name)s - %(levelname)s - %(message)s")
     )
@@ -76,8 +78,8 @@ def _configure_logging():
 _configure_logging()
 
 
-from github_stars_mcp.utils.github_client import GitHubClient
 from github_stars_mcp.cache.file_cache import FileCache
+from github_stars_mcp.utils.github_client import GitHubClient
 
 # FastMCP server instance
 mcp = FastMCP("GitHub Stars MCP Server")
@@ -86,10 +88,10 @@ mcp = FastMCP("GitHub Stars MCP Server")
 api_cache = TTLCache(maxsize=128, ttl=300)
 
 # File cache instance (L2 cache)
-file_cache: Optional[FileCache] = None
+file_cache: FileCache | None = None
 
 # GitHub client instance
-github_client: Optional[GitHubClient] = None
+github_client: GitHubClient | None = None
 
 
 async def initialize_file_cache():
@@ -97,13 +99,11 @@ async def initialize_file_cache():
     global file_cache
     try:
         from .config import settings
-        import structlog
-        
+
         logger = structlog.get_logger(__name__)
         file_cache = FileCache(cache_dir=settings.cache_dir)
         logger.info("File cache initialized", cache_dir=settings.cache_dir)
     except Exception as e:
-        import structlog
         logger = structlog.get_logger(__name__)
         logger.error("Failed to initialize file cache", error=str(e))
         file_cache = None
@@ -114,13 +114,11 @@ async def initialize_github_client():
     global github_client
     try:
         from .config import settings
-        import structlog
-        
+
         logger = structlog.get_logger(__name__)
         github_client = GitHubClient(settings.github_token)
         logger.info("GitHub client initialized")
     except Exception as e:
-        import structlog
         logger = structlog.get_logger(__name__)
         logger.error("Failed to initialize GitHub client", error=str(e))
         github_client = None

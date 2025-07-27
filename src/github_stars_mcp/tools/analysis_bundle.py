@@ -1,17 +1,14 @@
 """High-level analysis bundle tool for GitHub starred repositories."""
+
 import asyncio
-from asyncio import gather, Semaphore
-from collections import Counter
-from typing import Any
+from asyncio import Semaphore
+from itertools import islice
 
 import structlog
 from fastmcp import Context
 
-from ..cache.decorators import multi_level_cache
 from ..exceptions import GitHubAPIError
 from ..models import (
-    AnalysisBundle,
-    StarredRepositoriesResponse,
     StarredRepositoriesWithReadmeResponse,
     StartedRepoWithReadme,
 )
@@ -21,9 +18,6 @@ from .starred_repo_list import _get_user_starred_repositories_impl
 
 logger = structlog.get_logger(__name__)
 
-
-# 使用 itertools 方法分组
-from itertools import islice
 
 def chunk_list(iterable, chunk_size):
     iterator = iter(iterable)
@@ -38,7 +32,7 @@ async def create_full_analysis_bundle(
     username: str | None = None,
     include_readme: bool = True,
     max_repositories: int = 100,
-    concurrent_requests: int = 10
+    concurrent_requests: int = 10,
 ) -> StarredRepositoriesWithReadmeResponse:
     """Create comprehensive analysis bundle for user starred repositories.
 
@@ -70,7 +64,7 @@ async def create_full_analysis_bundle(
         "Starting starred repository analysis bundle creation",
         username=username or "authenticated_user",
         max_repositories=max_repositories,
-        include_readme=include_readme
+        include_readme=include_readme,
     )
     stated_repo_map = {}
 
@@ -89,18 +83,16 @@ async def create_full_analysis_bundle(
         while starred_data.has_next_page:
             if len(stated_repo_map.keys()) >= max_repositories:
                 break
-            await ctx.info(f"Fetching next page of starred repositories, lens: {len(stated_repo_map.keys())}")
+            await ctx.info(
+                f"Fetching next page of starred repositories, lens: {len(stated_repo_map.keys())}"
+            )
             starred_data = await _get_user_starred_repositories_impl(
-                ctx=ctx,
-                username=username,
-                cursor=starred_data.end_cursor
+                ctx=ctx, username=username, cursor=starred_data.end_cursor
             )
             for repo in starred_data.repositories:
                 stated_repo_map[repo.repo_id] = StartedRepoWithReadme.model_construct(
                     **repo.model_dump()
                 )
-
-
 
         await ctx.info(
             f"Fetching detailed repository information, {len(stated_repo_map.keys())}",
@@ -113,14 +105,12 @@ async def create_full_analysis_bundle(
         async def fetch_chunk_details(ctx, repo_ids_chunk):
             async with semaphore:
                 return await _get_batch_repo_details_impl(
-                    ctx=ctx, repo_ids=repo_ids_chunk,
+                    ctx=ctx,
+                    repo_ids=repo_ids_chunk,
                 )
 
         # 创建并发任务
-        tasks = [
-            fetch_chunk_details(ctx, chunk)
-            for chunk in chunked_repo_ids
-        ]
+        tasks = [fetch_chunk_details(ctx, chunk) for chunk in chunked_repo_ids]
         chunk_results = await asyncio.gather(*tasks)
         i = 1
         for result in chunk_results:
@@ -141,6 +131,4 @@ async def create_full_analysis_bundle(
         await ctx.error(
             f"Failed to create analysis bundle, {username}, error: {str(e)}",
         )
-        raise GitHubAPIError(f"Failed to create analysis bundle: {str(e)}")
-
-
+        raise GitHubAPIError(f"Failed to create analysis bundle: {str(e)}") from e

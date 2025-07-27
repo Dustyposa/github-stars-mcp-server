@@ -1,6 +1,5 @@
 """MCP server main entry point."""
 
-import logging
 import sys
 
 # Redirect stdout to stderr immediately to prevent MCP protocol conflicts
@@ -10,14 +9,12 @@ sys.stdout = sys.stderr
 import structlog
 
 from .config import settings
-from .exceptions import ConfigurationError
 from .shared import mcp
 
 # Restore stdout after imports
 sys.stdout = _original_stdout
 
 # Import tools to register them
-from . import tools
 
 
 # Logging is now configured in shared.py when the module is imported
@@ -29,14 +26,15 @@ logger.info("GitHub Stars MCP Server module loaded", log_level=settings.log_leve
 
 # Server tools removed - keeping only core repository analysis tools
 
+
 # Async initialization function
 async def initialize_server():
     """Initialize server components asynchronously."""
     from . import shared
-    
+
     # Initialize file cache
     await shared.initialize_file_cache()
-    
+
     # Initialize GitHub client
     if settings.github_token:
         await shared.initialize_github_client()
@@ -61,13 +59,15 @@ def main() -> None:
     """Main entry point for the MCP server."""
     # Redirect stdout to stderr for MCP server execution
     sys.stdout = sys.stderr
-    
+
     try:
-        logger.info("Starting GitHub Stars MCP Server from main()", log_level=settings.log_level)
-        
+        logger.info(
+            "Starting GitHub Stars MCP Server from main()", log_level=settings.log_level
+        )
+
         # Run the MCP server
         mcp.run()
-    
+
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:

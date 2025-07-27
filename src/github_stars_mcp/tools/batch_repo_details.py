@@ -94,16 +94,10 @@ async def fetch_multi_repository_details(
 async def get_batch_repo_details(
     ctx: Context,
     repo_ids: list[str],
-    max_concurrent: int = 10
 ) -> BatchRepositoryDetailsResponse:
     """
     接收一个仓库标识符的列表，并一次性批量返回所有这些仓库的详细信息，包括它们的 README 内容。当你需要比较少数几个特定项目，或者在获取到一个仓库列表后需要进一步获取它们的详细内容时，使用此工具以提高效率。
     """
-
-
-    if max_concurrent < 1 or max_concurrent > 20:
-        await ctx.error(f"max_concurrent must be between 1-20: max_concurrent={max_concurrent}")
-        raise ValidationError("max_concurrent must be between 1-20")
 
     from .. import shared
     if not shared.github_client:

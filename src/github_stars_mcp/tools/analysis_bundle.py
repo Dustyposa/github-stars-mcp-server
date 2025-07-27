@@ -1,5 +1,6 @@
 """High-level analysis bundle tool for GitHub starred repositories."""
-
+import asyncio
+from asyncio import gather, Semaphore
 from collections import Counter
 from typing import Any
 
@@ -12,6 +13,8 @@ from ..models import (
     AnalysisBundle,
     BatchRepositoryDetailsResponse,
     StarredRepositoriesResponse,
+    StarredRepositoriesWithReadmeResponse,
+    StartedRepoWithReadme,
 )
 from ..shared import mcp
 from .batch_repo_details import get_batch_repo_details
@@ -20,76 +23,24 @@ from .starred_repo_list import get_user_starred_repositories
 logger = structlog.get_logger(__name__)
 
 
-def _generate_analysis_metadata(
-    starred_response: StarredRepositoriesResponse,
-    details_response: BatchRepositoryDetailsResponse
-) -> dict[str, Any]:
-    """Generate analysis metadata from repository data.
+# 使用 itertools 方法分组
+from itertools import islice
 
-    Args:
-        starred_response: Starred repositories response
-        details_response: Batch repository details response
-
-    Returns:
-        Dictionary containing analysis metadata
-    """
-    # Language distribution
-    languages = []
-    topics = []
-    star_counts = []
-
-    for repo_detail in details_response.repository_details:
-        repo = repo_detail.repository
-
-        # Collect languages
-        if repo.primary_language:
-            languages.append(repo.primary_language)
-        languages.extend(repo.languages)
-
-        # Collect topics
-        topics.extend(repo.repository_topics)
-
-        # Collect star counts
-        star_counts.append(repo.stargazer_count)
-
-    # Calculate distributions
-    language_distribution = dict(Counter(languages).most_common(10))
-    topic_distribution = dict(Counter(topics).most_common(15))
-
-    # Calculate statistics
-    total_stars = sum(star_counts) if star_counts else 0
-    avg_stars = total_stars / len(star_counts) if star_counts else 0
-
-    return {
-        "language_distribution": language_distribution,
-        "topic_distribution": topic_distribution,
-        "star_statistics": {
-            "total_stars": total_stars,
-            "average_stars": round(avg_stars, 2),
-            "max_stars": max(star_counts) if star_counts else 0,
-            "min_stars": min(star_counts) if star_counts else 0
-        },
-        "repository_counts": {
-            "total_requested": starred_response.total_count,
-            "successfully_detailed": details_response.success_count,
-            "failed_details": details_response.error_count
-        },
-        "readme_statistics": {
-            "with_readme": sum(1 for detail in details_response.repository_details if detail.has_readme),
-            "without_readme": sum(1 for detail in details_response.repository_details if not detail.has_readme)
-        }
-    }
+def chunk_list(iterable, chunk_size):
+    iterator = iter(iterable)
+    while chunk := list(islice(iterator, chunk_size)):
+        yield chunk
 
 
 @mcp.tool
 @multi_level_cache(ttl=1800, file_ttl=7200)  # 30 min L1, 2 hours L2
-async def create_starred_repo_analysis_bundle(
+async def create_full_analysis_bundle(
     ctx: Context,
     username: str | None = None,
     include_readme: bool = True,
     max_repositories: int = 100,
     concurrent_requests: int = 10
-) -> AnalysisBundle:
+) -> StarredRepositoriesWithReadmeResponse:
     """Create comprehensive analysis bundle for user starred repositories.
 
     This high-level tool combines multiple operations to generate a complete
@@ -103,7 +54,7 @@ async def create_starred_repo_analysis_bundle(
         concurrent_requests: Number of concurrent requests for batch operations (1-20, default: 10)
 
     Returns:
-        AnalysisBundle containing complete repository analysis
+        StarredRepositoriesWithReadmeResponse containing complete repository analysis
 
     Raises:
         GitHubAPIError: If GitHub API requests fail
@@ -116,12 +67,13 @@ async def create_starred_repo_analysis_bundle(
     if concurrent_requests < 1 or concurrent_requests > 20:
         raise ValueError("concurrent_requests must be between 1 and 20")
 
-    await ctx.info(
+    logger.info(
         "Starting starred repository analysis bundle creation",
         username=username or "authenticated_user",
         max_repositories=max_repositories,
         include_readme=include_readme
     )
+    stated_repo_map = {}
 
     try:
         # Step 1: Get starred repositories list
@@ -130,178 +82,57 @@ async def create_starred_repo_analysis_bundle(
             ctx=ctx,
             username=username or "",
         )
-        
-        # Convert dict response to StarredRepositoriesResponse
-        from ..models import StarredRepositoriesResponse, Repository
-        repositories = []
-        for repo_data in starred_data.get('repositories', []):
-            repo = Repository(
-                nameWithOwner=repo_data['full_name'],
-                name=repo_data['name'],
-                owner=repo_data['full_name'].split('/')[0],
-                description=repo_data.get('description', ''),
-                stargazerCount=repo_data['stars_count'],
-                url=repo_data['url'],
-                primaryLanguage=repo_data.get('language', ''),
-                starredAt=repo_data.get('starred_at'),
-                pushedAt=repo_data.get('updated_at'),
-                diskUsage=0,
-                repositoryTopics=repo_data.get('topics', []),
-                languages=[repo_data.get('language', '')] if repo_data.get('language') else []
+        for repo in starred_data.repositories:
+            stated_repo_map[repo.id] = repo
+        while starred_data.has_next_page or len(stated_repo_map.keys()) < max_repositories:
+            await ctx.info("Fetching next page of starred repositories")
+            starred_data = await get_user_starred_repositories(
+                ctx=ctx,
+                username=username or "",
+                cursor=starred_data.end_cursor
             )
-            repositories.append(repo)
-        
-        starred_response = StarredRepositoriesResponse(
-            repositories=repositories,
-            total_count=starred_data.get('total_count', len(repositories)),
-            has_more=starred_data.get('has_next_page', False),
-            next_cursor=starred_data.get('end_cursor', '')
-        )
+            for repo in starred_data.repositories:
+                stated_repo_map[repo.id] = StartedRepoWithReadme(
+                    **repo.model_dump()
+                )
 
-        if not starred_response.repositories:
-            await ctx.info("No starred repositories found")
-            from datetime import datetime
-            return AnalysisBundle(
-                username=username or "authenticated_user",
-                total_repositories=0,
-                repositories=[],
-                language_distribution=[],
-                topic_distribution=[],
-                star_statistics={
-                    "total_stars": 0,
-                    "average_stars": 0.0,
-                    "median_stars": 0.0,
-                    "max_stars": 0,
-                    "min_stars": 0
-                },
-                analysis_timestamp=datetime.utcnow(),
-                processing_summary={
-                    "total_requested": 0,
-                    "successfully_detailed": 0,
-                    "failed_details": 0,
-                    "readme_statistics": {"with_readme": 0, "without_readme": 0}
-                }
-            )
 
-        # Step 2: Extract repository names for batch details
-        repository_names = [repo.name_with_owner for repo in starred_response.repositories]
 
         await ctx.info(
-            "Fetching detailed repository information",
-            repository_count=len(repository_names)
+            f"Fetching detailed repository information, {len(stated_repo_map.keys())}",
         )
+        # 100 个分组
+        chunked_repo_ids = list(chunk_list(list(stated_repo_map.keys()), 100))
+        # 控制并发数量
+        semaphore = Semaphore(concurrent_requests)
 
-        # Step 3: Get batch repository details
-        details_response = await get_batch_repo_details(
-            ctx=ctx,
-            repository_names=repository_names,
-            max_concurrent=concurrent_requests
-        )
+        async def fetch_chunk_details(ctx, repo_ids_chunk):
+            async with semaphore:
+                return await get_batch_repo_details(
+                    ctx=ctx, repo_ids=repo_ids_chunk,
+                )
 
-        # Step 4: Generate analysis data
-        await ctx.info("Generating analysis data")
-        
-        # Collect languages and topics
-        languages = []
-        topics = []
-        star_counts = []
-        
-        for repo_detail in details_response.repository_details:
-            repo = repo_detail.repository
-            
-            # Collect languages
-            if repo.primary_language:
-                languages.append(repo.primary_language)
-            languages.extend(repo.languages)
-            
-            # Collect topics
-            topics.extend(repo.repository_topics)
-            
-            # Collect star counts
-            star_counts.append(repo.stargazer_count)
-        
-        # Calculate distributions
-        from ..models import LanguageStats, TopicStats, StarStats
-        from collections import Counter
-        import statistics
-        
-        language_counter = Counter(languages)
-        topic_counter = Counter(topics)
-        
-        language_distribution = [
-            LanguageStats(
-                language=lang,
-                count=count,
-                percentage=round(count / len(details_response.repository_details) * 100, 2)
-            )
-            for lang, count in language_counter.most_common(10)
+        # 创建并发任务
+        tasks = [
+            fetch_chunk_details(ctx, chunk)
+            for chunk in chunked_repo_ids
         ]
-        
-        topic_distribution = [
-            TopicStats(
-                topic=topic,
-                count=count,
-                percentage=round(count / len(details_response.repository_details) * 100, 2)
-            )
-            for topic, count in topic_counter.most_common(15)
-        ]
-        
-        # Calculate star statistics
-        total_stars = sum(star_counts) if star_counts else 0
-        avg_stars = statistics.mean(star_counts) if star_counts else 0.0
-        median_stars = statistics.median(star_counts) if star_counts else 0.0
-        
-        star_statistics = StarStats(
-            total_stars=total_stars,
-            average_stars=round(avg_stars, 2),
-            median_stars=round(median_stars, 2),
-            max_stars=max(star_counts) if star_counts else 0,
-            min_stars=min(star_counts) if star_counts else 0
-        )
-        
-        # Processing summary
-        processing_summary = {
-            "total_requested": starred_response.total_count,
-            "successfully_detailed": details_response.success_count,
-            "failed_details": details_response.error_count,
-            "readme_statistics": {
-                "with_readme": sum(1 for detail in details_response.repository_details if detail.has_readme),
-                "without_readme": sum(1 for detail in details_response.repository_details if not detail.has_readme)
-            }
-        }
-        
-        # Step 5: Create analysis bundle
-        from datetime import datetime
-        bundle = AnalysisBundle(
-            username=username or "authenticated_user",
-            total_repositories=len(details_response.repository_details),
-            repositories=details_response.repository_details,
-            language_distribution=language_distribution,
-            topic_distribution=topic_distribution,
-            star_statistics=star_statistics,
-            analysis_timestamp=datetime.utcnow(),
-            processing_summary=processing_summary
-        )
+        chunk_results = await asyncio.gather(*tasks)
+        for result in chunk_results:
+            for id_, readme_schema in result.data.items():
+                stated_repo_map[id_].readme_content = readme_schema.readme_content
 
-        await ctx.info(
-            "Analysis bundle created successfully",
-            total_starred=starred_response.total_count,
-            detailed_repos=details_response.success_count,
-            failed_repos=details_response.error_count,
-            top_languages=[lang.language for lang in language_distribution[:5]]
+        return StarredRepositoriesWithReadmeResponse(
+            total_count=len(stated_repo_map.keys()),
+            repositories=list(stated_repo_map.values()),
         )
-
-        return bundle
 
     except GitHubAPIError:
         raise
     except Exception as e:
         await ctx.error(
-            "Failed to create analysis bundle",
-            username=username,
-            error=str(e)
+            f"Failed to create analysis bundle, {username}, error: {str(e)}",
         )
         raise GitHubAPIError(f"Failed to create analysis bundle: {str(e)}")
 
 
-# get_analysis_bundle_summary tool removed - summary data is available in AnalysisBundle.summary_stats property

@@ -38,7 +38,7 @@ async def get_user_starred_repositories(
     ctx: Context,
     username: str = "",
     cursor: str = ""
-) -> Dict[str, Any]:
+) -> StarredRepositoriesResponse:
     """Get a list of repositories starred by a user.
     
     Args:
@@ -108,7 +108,7 @@ async def get_user_starred_repositories(
         )
         
         await ctx.info(f"Retrieved {len(repositories)} starred repositories")
-        return result.model_dump()
+        return result
         
     except AuthenticationError:
         await ctx.error("Authentication failed - check GitHub token")

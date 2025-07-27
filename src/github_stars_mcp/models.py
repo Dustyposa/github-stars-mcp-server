@@ -23,6 +23,12 @@ class StartedRepository(BaseModel):
     repository_topics: list[str] = Field(default=[], alias='repositoryTopics', description="Repository topics")
     languages: list[str] = Field(default=[], description="Programming languages used in the repository")
 
+class StartedRepoWithReadme(StartedRepository):
+    """GitHub repository model with README content."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    readme_content: Optional[str] = Field(default=None, description="Repository README content")
+
 class StarredRepositoriesResponse(BaseModel):
     """Response model for starred repositories."""
     model_config = ConfigDict(populate_by_name=True)
@@ -31,6 +37,16 @@ class StarredRepositoriesResponse(BaseModel):
     total_count: int = Field(description="Total count of starred repositories")
     has_next_page: bool = Field(default=False, description="Whether there are more pages")
     end_cursor: Optional[str] = Field(default=None, description="End cursor for pagination")
+
+class StarredRepositoriesWithReadmeResponse(BaseModel):
+    """Response model for starred repositories with readme."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    repositories: List[StartedRepoWithReadme] = Field(
+        description="List of starred repositories"
+    )
+    total_count: int = Field(description="Total count of starred repositories")
 
 
 

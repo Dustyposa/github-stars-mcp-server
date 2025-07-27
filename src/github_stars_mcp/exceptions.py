@@ -78,10 +78,3 @@ class ConfigurationError(GitHubStarsMCPError):
 
     def __init__(self, message: str = "Configuration error", **kwargs) -> None:
         super().__init__(message, error_code="CONFIGURATION_ERROR", **kwargs)
-
-
-class CacheError(GitHubStarsMCPError):
-    """Exception raised when cache operations fail."""
-
-    def __init__(self, message: str = "Cache operation failed", **kwargs) -> None:
-        super().__init__(message, error_code="CACHE_ERROR", **kwargs)

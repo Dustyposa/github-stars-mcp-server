@@ -8,7 +8,6 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
 
     github_token: str
-    cache_dir: str = ".cache"
     log_level: str = "INFO"
     dangerously_omit_auth: bool = True
 

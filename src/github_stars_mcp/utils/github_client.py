@@ -143,10 +143,7 @@ class GitHubClient:
             "User-Agent": "github-stars-mcp-server/1.0",
         }
 
-        # Cache for current user info
-        self._current_user_cache: dict[str, Any] | None = None
-        self._current_user_cache_time: float | None = None
-        self._cache_ttl = 300  # 5 minutes
+
 
     @retry(
         stop=stop_after_attempt(3),
@@ -284,21 +281,6 @@ class GitHubClient:
         Returns:
             Current user information or None if authentication fails
         """
-        import time
-
-        # Check cache first
-        current_time = time.time()
-        if (
-            self._current_user_cache is not None
-            and self._current_user_cache_time is not None
-            and current_time - self._current_user_cache_time < self._cache_ttl
-        ):
-            logger.info(
-                "Using cached current user info",
-                username=self._current_user_cache.get("login"),
-            )
-            return self._current_user_cache
-
         logger.info("Fetching current user info from API")
 
         try:
@@ -306,11 +288,8 @@ class GitHubClient:
 
             user_data = data.get("viewer")
             if user_data:
-                # Cache the result
-                self._current_user_cache = user_data
-                self._current_user_cache_time = current_time
                 logger.info(
-                    "Current user info fetched and cached successfully",
+                    "Current user info fetched successfully",
                     username=user_data.get("login"),
                 )
             else:

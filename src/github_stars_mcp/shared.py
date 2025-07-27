@@ -4,7 +4,6 @@ import logging
 import sys
 
 import structlog
-from cachetools import TTLCache
 
 # Redirect stdout to stderr before importing FastMCP
 _original_stdout = sys.stdout
@@ -78,35 +77,13 @@ def _configure_logging():
 _configure_logging()
 
 
-from github_stars_mcp.cache.file_cache import FileCache
 from github_stars_mcp.utils.github_client import GitHubClient
 
 # FastMCP server instance
 mcp = FastMCP("GitHub Stars MCP Server")
 
-# API response cache (L1 cache)
-api_cache = TTLCache(maxsize=128, ttl=300)
-
-# File cache instance (L2 cache)
-file_cache: FileCache | None = None
-
 # GitHub client instance
 github_client: GitHubClient | None = None
-
-
-async def initialize_file_cache():
-    """Initialize file cache."""
-    global file_cache
-    try:
-        from .config import settings
-
-        logger = structlog.get_logger(__name__)
-        file_cache = FileCache(cache_dir=settings.cache_dir)
-        logger.info("File cache initialized", cache_dir=settings.cache_dir)
-    except Exception as e:
-        logger = structlog.get_logger(__name__)
-        logger.error("Failed to initialize file cache", error=str(e))
-        file_cache = None
 
 
 async def initialize_github_client():

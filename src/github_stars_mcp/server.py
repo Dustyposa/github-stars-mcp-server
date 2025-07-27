@@ -15,6 +15,7 @@ from .shared import mcp
 sys.stdout = _original_stdout
 
 # Import tools to register them
+from .tools import analysis_bundle, batch_repo_details, repo_details, starred_repo_list
 
 
 # Logging is now configured in shared.py when the module is imported
@@ -31,9 +32,6 @@ logger.info("GitHub Stars MCP Server module loaded", log_level=settings.log_leve
 async def initialize_server():
     """Initialize server components asynchronously."""
     from . import shared
-
-    # Initialize file cache
-    await shared.initialize_file_cache()
 
     # Initialize GitHub client
     if settings.github_token:

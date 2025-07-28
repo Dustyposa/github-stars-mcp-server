@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from fastmcp import Context
 
-from github_stars_mcp.tools.starred_repo_list import get_user_starred_repositories
-from github_stars_mcp.tools.repo_details import get_repo_details
-from github_stars_mcp.tools.batch_repo_details import get_batch_repo_details
-from github_stars_mcp.tools.analysis_bundle import create_full_analysis_bundle
+from github_stars_mcp.tools.starred_repo_list import _get_user_starred_repositories_impl
+from github_stars_mcp.tools.repo_details import _get_repo_details_impl
+from github_stars_mcp.tools.batch_repo_details import _get_batch_repo_details_impl
+from github_stars_mcp.tools.analysis_bundle import _create_full_analysis_bundle_impl
 from github_stars_mcp.models import (
     StarredRepositoriesResponse,
     StartedRepository,
@@ -117,16 +117,16 @@ class TestToolsWorkflow:
             mock_batch_fetch.return_value = batch_response
             
             # Step 1: Get starred repositories
-            starred_result = await get_user_starred_repositories(mock_context, "testuser")
+            starred_result = await _get_user_starred_repositories_impl(mock_context, "testuser")
             assert len(starred_result.repositories) == 2
             
             # Step 2: Get batch details for the repositories
-            repo_ids = [repo.nameWithOwner for repo in starred_result.repositories]
-            batch_result = await get_batch_repo_details(mock_context, repo_ids)
+            repo_ids = [repo.name_with_owner for repo in starred_result.repositories]
+            batch_result = await _get_batch_repo_details_impl(mock_context, repo_ids)
             assert len(batch_result.data) == 2
             
             # Step 3: Create full analysis bundle
-            bundle_result = await create_full_analysis_bundle(mock_context, "testuser")
+            bundle_result = await _create_full_analysis_bundle_impl(mock_context, "testuser")
             assert isinstance(bundle_result, StarredRepositoriesWithReadmeResponse)
             assert bundle_result.total_count == 2
 
@@ -141,6 +141,8 @@ class TestToolsWorkflow:
                     "node": {
                         "id": "repo1",
                         "nameWithOwner": "user/repo1",
+                        "stargazerCount": 100,
+                        "url": "https://github.com/user/repo1",
                         "repositoryTopics": {"nodes": []},
                         "languages": {"edges": []}
                     }
@@ -158,6 +160,8 @@ class TestToolsWorkflow:
                     "node": {
                         "id": "repo2",
                         "nameWithOwner": "user/repo2",
+                        "stargazerCount": 200,
+                        "url": "https://github.com/user/repo2",
                         "repositoryTopics": {"nodes": []},
                         "languages": {"edges": []}
                     }
@@ -175,13 +179,13 @@ class TestToolsWorkflow:
             mock_request.side_effect = [first_page_response, second_page_response]
             
             # Get first page
-            first_result = await get_user_starred_repositories(mock_context, "testuser")
+            first_result = await _get_user_starred_repositories_impl(mock_context, "testuser")
             assert len(first_result.repositories) == 1
             assert first_result.has_next_page is True
             assert first_result.end_cursor == "cursor1"
             
             # Get second page
-            second_result = await get_user_starred_repositories(mock_context, "testuser", "cursor1")
+            second_result = await _get_user_starred_repositories_impl(mock_context, "testuser", "cursor1")
             assert len(second_result.repositories) == 1
             assert second_result.has_next_page is False
 
@@ -201,10 +205,10 @@ class TestToolsWorkflow:
             
             # First attempt should fail
             with pytest.raises(GitHubAPIError):
-                await get_user_starred_repositories(mock_context, "testuser")
+                await _get_user_starred_repositories_impl(mock_context, "testuser")
             
             # Second attempt should succeed
-            result = await get_user_starred_repositories(mock_context, "testuser")
+            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
             assert isinstance(result, StarredRepositoriesResponse)
 
     @pytest.mark.asyncio
@@ -224,7 +228,7 @@ class TestToolsWorkflow:
             
             mock_fetch.return_value = BatchRepositoryDetailsResponse(data=mock_batch_data)
             
-            result = await get_batch_repo_details(mock_context, large_repo_list)
+            result = await _get_batch_repo_details_impl(mock_context, large_repo_list)
             
             assert len(result.data) == 50
             assert all(f"user/repo{i}" in result.data for i in range(50))
@@ -246,7 +250,7 @@ class TestToolsWorkflow:
             
             mock_fetch.return_value = BatchRepositoryDetailsResponse(data=partial_data)
             
-            result = await get_batch_repo_details(mock_context, repo_ids)
+            result = await _get_batch_repo_details_impl(mock_context, repo_ids)
             
             # Should return partial results
             assert len(result.data) == 2
@@ -275,7 +279,7 @@ class TestToolsPerformance:
             
             # Create multiple concurrent requests
             tasks = [
-                get_user_starred_repositories(mock_context, f"user{i}")
+                _get_user_starred_repositories_impl(mock_context, f"user{i}")
                 for i in range(5)
             ]
             
@@ -293,15 +297,23 @@ class TestToolsPerformance:
         with patch('github_stars_mcp.tools.analysis_bundle._fetch_all_starred_repositories') as mock_fetch_starred, \
              patch('github_stars_mcp.tools.analysis_bundle._fetch_repository_details') as mock_fetch_details:
             
-            # Mock large dataset
+            # Mock large dataset with proper StartedRepoWithReadme objects
+            from github_stars_mcp.models import StartedRepoWithReadme
             mock_starred_map = {
-                f"repo{i}": MagicMock()
+                f"repo{i}": StartedRepoWithReadme(
+                    id=f"repo{i}",
+                    nameWithOwner=f"user/repo{i}",
+                    name=f"repo{i}",
+                    owner="user",
+                    stargazerCount=100,
+                    url=f"https://github.com/user/repo{i}"
+                )
                 for i in range(large_repo_count)
             }
             mock_fetch_starred.return_value = mock_starred_map
             mock_fetch_details.return_value = {}
             
-            result = await create_full_analysis_bundle(mock_context, "testuser")
+            result = await _create_full_analysis_bundle_impl(mock_context, "testuser")
             
             # Should handle large dataset without issues
             assert result.total_count == large_repo_count
@@ -323,7 +335,7 @@ class TestToolsEdgeCases:
                 "pageInfo": {"hasNextPage": False, "endCursor": ""}
             }
             
-            result = await get_user_starred_repositories(mock_context, "emptyuser")
+            result = await _get_user_starred_repositories_impl(mock_context, "emptyuser")
             
             assert result.total_count == 0
             assert len(result.repositories) == 0
@@ -336,14 +348,18 @@ class TestToolsEdgeCases:
              patch('github_stars_mcp.tools.starred_repo_list.safe_github_request') as mock_request, \
              patch('github_stars_mcp.tools.starred_repo_list.validate_github_username'):
             
-            # Malformed response missing required fields
+            # Malformed response missing some optional fields
             mock_request.return_value = {
                 "edges": [
                     {
                         "node": {
                             "id": "repo1",
-                            "nameWithOwner": "user/repo"
-                            # Missing other required fields
+                            "nameWithOwner": "user/repo",
+                            "stargazerCount": 0,
+                            "url": "https://github.com/user/repo",
+                            "repositoryTopics": {"nodes": []},
+                            "languages": {"edges": []}
+                            # Missing some optional fields like description
                         }
                     }
                 ],
@@ -352,7 +368,7 @@ class TestToolsEdgeCases:
             }
             
             # Should handle gracefully
-            result = await get_user_starred_repositories(mock_context, "testuser")
+            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
             assert len(result.repositories) == 1
 
     @pytest.mark.asyncio
@@ -370,6 +386,8 @@ class TestToolsEdgeCases:
                             "id": "repo1",
                             "nameWithOwner": "用户/项目",
                             "description": "这是一个测试项目 🚀",
+                            "stargazerCount": 100,
+                            "url": "https://github.com/用户/项目",
                             "repositoryTopics": {"nodes": []},
                             "languages": {"edges": []}
                         }
@@ -379,10 +397,10 @@ class TestToolsEdgeCases:
                 "pageInfo": {"hasNextPage": False, "endCursor": ""}
             }
             
-            result = await get_user_starred_repositories(mock_context, "testuser")
+            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
             
             assert len(result.repositories) == 1
-            assert result.repositories[0].nameWithOwner == "用户/项目"
+            assert result.repositories[0].name_with_owner == "用户/项目"
             assert "🚀" in result.repositories[0].description
 
     @pytest.mark.asyncio
@@ -397,10 +415,10 @@ class TestToolsEdgeCases:
             mock_fetch.return_value = BatchRepositoryDetailsResponse(data={})
             
             # Should succeed with max batch size
-            result = await get_batch_repo_details(mock_context, max_repo_ids)
+            result = await _get_batch_repo_details_impl(mock_context, max_repo_ids)
             assert isinstance(result, BatchRepositoryDetailsResponse)
             
             # Should fail with over max batch size
             over_max_repo_ids = [f"user/repo{i}" for i in range(101)]
             with pytest.raises(ValidationError):
-                await get_batch_repo_details(mock_context, over_max_repo_ids)
+                await _get_batch_repo_details_impl(mock_context, over_max_repo_ids)

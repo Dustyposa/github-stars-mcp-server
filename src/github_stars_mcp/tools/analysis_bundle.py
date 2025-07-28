@@ -100,20 +100,18 @@ async def _fetch_repository_details(ctx: Context, repo_ids: list, concurrent_req
     return all_details
 
 
-@mcp.tool
 @handle_github_api_errors("create analysis bundle")
-@log_function_call("create_full_analysis_bundle")
-async def create_full_analysis_bundle(
+@log_function_call("create_full_analysis_bundle_impl")
+async def _create_full_analysis_bundle_impl(
     ctx: Context,
     username: str | None = None,
 ) -> StarredRepositoriesWithReadmeResponse:
-    """Create comprehensive analysis bundle for user starred repositories.
+    """Internal implementation for creating comprehensive analysis bundle.
 
-    This high-level tool combines multiple operations to generate a complete
-    analysis of a user's starred repositories, including detailed information
-    and statistical analysis.
+    This function contains the core logic that can be called from other tools.
 
     Args:
+        ctx: FastMCP context
         username: GitHub username to analyze (optional, uses authenticated user if not provided)
 
     Returns:
@@ -150,3 +148,27 @@ async def create_full_analysis_bundle(
         total_count=len(stated_repo_map),
         repositories=list(stated_repo_map.values()),
     )
+
+
+@mcp.tool
+@log_function_call("create_full_analysis_bundle")
+async def create_full_analysis_bundle(
+    ctx: Context,
+    username: str | None = None,
+) -> StarredRepositoriesWithReadmeResponse:
+    """Create comprehensive analysis bundle for user starred repositories.
+
+    This high-level tool combines multiple operations to generate a complete
+    analysis of a user's starred repositories, including detailed information
+    and statistical analysis.
+
+    Args:
+        username: GitHub username to analyze (optional, uses authenticated user if not provided)
+
+    Returns:
+        StarredRepositoriesWithReadmeResponse containing complete repository analysis
+
+    Raises:
+        GitHubAPIError: If GitHub API requests fail
+    """
+    return await _create_full_analysis_bundle_impl(ctx, username)

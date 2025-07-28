@@ -47,8 +47,8 @@ class TestDataParsing:
         
         assert isinstance(result, StartedRepository)
         assert result.name_with_owner == "octocat/Hello-World"
-        assert result.name == "octocat"  # This is actually wrong in the implementation
-        assert result.owner == "Hello-World"  # This is actually wrong in the implementation
+        assert result.name == "Hello-World"
+        assert result.owner == "octocat"
         assert result.description == "This your first repo!"
         assert result.stargazer_count == 1420
         assert result.primary_language == "Python"
@@ -71,8 +71,8 @@ class TestDataParsing:
         result = _parse_repository_data(edge_data)
         
         assert result.name_with_owner == "user/repo"
-        assert result.name == "user"  # This is actually wrong in the implementation
-        assert result.owner == "repo"  # This is actually wrong in the implementation
+        assert result.name == "repo"
+        assert result.owner == "user"
         assert result.description is None
         assert result.primary_language is None
         assert result.repository_topics == []

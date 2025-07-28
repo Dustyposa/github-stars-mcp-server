@@ -22,52 +22,85 @@ class TestStarredRepoList:
     @pytest.mark.asyncio
     async def test_get_starred_repositories_success(self, mock_context):
         """Test successful retrieval of starred repositories."""
+        # Import shared module to directly set github_client
+        from github_stars_mcp import shared
+        
         with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure, \
-             patch('github_stars_mcp.tools.starred_repo_list.safe_github_request') as mock_request, \
              patch('github_stars_mcp.tools.starred_repo_list.validate_github_username') as mock_validate:
             
-            mock_ensure.return_value = AsyncMock()
-            mock_request.return_value = AsyncMock()
+            # Set up mocks
+            mock_github_client = AsyncMock()
+            # Set up the get_user_starred_repositories method as AsyncMock
+            mock_github_client.get_user_starred_repositories = AsyncMock()
+            # Add token attribute for ensure_github_client validation
+            mock_github_client.token = "fake_token"
             
-            mock_validate.return_value = "testuser"
-            mock_request.return_value = {
-                "edges": [
-                    {
-                        "node": {
-                            "id": "repo1",
-                            "nameWithOwner": "user/repo1",
-                            "stargazerCount": 100,
-                            "url": "https://github.com/user/repo1"
+            # Directly set shared.github_client to our mock
+            original_client = shared.github_client
+            shared.github_client = mock_github_client
+            
+            try:
+                mock_ensure.return_value = mock_github_client
+                mock_validate.return_value = "testuser"
+                
+                # Mock github_client.get_user_starred_repositories response
+                mock_github_client.get_user_starred_repositories.return_value = {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": "repo1",
+                                "nameWithOwner": "user/repo1",
+                                "stargazerCount": 100,
+                                "url": "https://github.com/user/repo1"
+                            }
                         }
-                    }
-                ],
-                "totalCount": 1,
-                "pageInfo": {"hasNextPage": False, "endCursor": ""}
-            }
-            
-            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
-            
-            assert isinstance(result, StarredRepositoriesResponse)
-            assert len(result.repositories) == 1
-            assert result.repositories[0].nameWithOwner == "user/repo1"
-            assert result.total_count == 1
+                    ],
+                    "totalCount": 1,
+                    "pageInfo": {"hasNextPage": False, "endCursor": ""}
+                }
+                
+                result = await _get_user_starred_repositories_impl(mock_context, "testuser")
+                
+                assert isinstance(result, StarredRepositoriesResponse)
+                assert len(result.repositories) == 1
+                assert result.repositories[0].name_with_owner == "user/repo1"
+                assert result.total_count == 1
+            finally:
+                # Restore original client
+                shared.github_client = original_client
 
     @pytest.mark.asyncio
     async def test_empty_username_handling(self, mock_context):
         """Test handling of empty username."""
-        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client'), \
-             patch('github_stars_mcp.tools.starred_repo_list.safe_github_request') as mock_request:
+        from github_stars_mcp import shared
+        
+        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure:
             
-            mock_request.return_value = {
-                "edges": [],
-                "totalCount": 0,
-                "pageInfo": {"hasNextPage": False, "endCursor": ""}
-            }
+            # Set up mocks
+            mock_github_client = AsyncMock()
+            mock_github_client.get_user_starred_repositories = AsyncMock()
+            mock_github_client.token = "fake_token"
             
-            result = await _get_user_starred_repositories_impl(mock_context, "")
+            # Directly set shared.github_client to our mock
+            original_client = shared.github_client
+            shared.github_client = mock_github_client
             
-            assert isinstance(result, StarredRepositoriesResponse)
-            assert result.total_count == 0
+            try:
+                mock_ensure.return_value = mock_github_client
+                
+                mock_github_client.get_user_starred_repositories.return_value = {
+                    "edges": [],
+                    "totalCount": 0,
+                    "pageInfo": {"hasNextPage": False, "endCursor": ""}
+                }
+                
+                result = await _get_user_starred_repositories_impl(mock_context, "")
+                
+                assert isinstance(result, StarredRepositoriesResponse)
+                assert result.total_count == 0
+            finally:
+                # Restore original client
+                shared.github_client = original_client
 
 
 class TestBatchRepoDetails:
@@ -126,8 +159,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_github_api_error_handling(self, mock_context):
         """Test handling of GitHub API errors."""
-        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure:
+        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure, \
+             patch('github_stars_mcp.tools.starred_repo_list.validate_github_username') as mock_validate:
+            
             mock_ensure.side_effect = GitHubAPIError("API Error")
+            mock_validate.return_value = "testuser"
             
             with pytest.raises(GitHubAPIError):
                 await _get_user_starred_repositories_impl(mock_context, "testuser")
@@ -135,8 +171,11 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_rate_limit_error_handling(self, mock_context):
         """Test handling of rate limit errors."""
-        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure:
+        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure, \
+             patch('github_stars_mcp.tools.starred_repo_list.validate_github_username') as mock_validate:
+            
             mock_ensure.side_effect = RateLimitError("Rate limit exceeded")
+            mock_validate.return_value = "testuser"
             
             with pytest.raises(RateLimitError) as exc_info:
                 await _get_user_starred_repositories_impl(mock_context, "testuser")
@@ -151,12 +190,25 @@ class TestDataParsing:
     @pytest.mark.asyncio
     async def test_repository_data_parsing(self, mock_context):
         """Test parsing of repository data from GitHub API."""
-        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client'), \
-             patch('github_stars_mcp.tools.starred_repo_list.safe_github_request') as mock_request, \
+        from github_stars_mcp import shared
+        
+        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure, \
              patch('github_stars_mcp.tools.starred_repo_list.validate_github_username') as mock_validate:
             
-            mock_validate.return_value = "testuser"
-            mock_request.return_value = {
+            # Set up mocks
+            mock_github_client = AsyncMock()
+            mock_github_client.get_user_starred_repositories = AsyncMock()
+            mock_github_client.token = "fake_token"
+            
+            # Directly set shared.github_client to our mock
+            original_client = shared.github_client
+            shared.github_client = mock_github_client
+            
+            try:
+                mock_ensure.return_value = mock_github_client
+                mock_validate.return_value = "testuser"
+                
+                mock_github_client.get_user_starred_repositories.return_value = {
                 "edges": [
                     {
                         "node": {
@@ -188,20 +240,23 @@ class TestDataParsing:
                 "pageInfo": {"hasNextPage": False, "endCursor": ""}
             }
             
-            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
-            
-            assert len(result.repositories) == 1
-            repo = result.repositories[0]
-            assert repo.nameWithOwner == "octocat/Hello-World"
-            assert repo.name == "Hello-World"
-            assert repo.owner == "octocat"
-            assert repo.description == "This your first repo!"
-            assert repo.stargazerCount == 1420
-            assert repo.primaryLanguage == "Python"
-            assert "python" in repo.repositoryTopics
-            assert "web" in repo.repositoryTopics
-            assert "Python" in repo.languages
-            assert "JavaScript" in repo.languages
+                result = await _get_user_starred_repositories_impl(mock_context, "testuser")
+                
+                assert len(result.repositories) == 1
+                repo = result.repositories[0]
+                assert repo.name_with_owner == "octocat/Hello-World"
+                assert repo.name == "Hello-World"
+                assert repo.owner == "octocat"
+                assert repo.description == "This your first repo!"
+                assert repo.stargazer_count == 1420
+                assert repo.primary_language == "Python"
+                assert "python" in repo.repository_topics
+                assert "web" in repo.repository_topics
+                assert "Python" in repo.languages
+                assert "JavaScript" in repo.languages
+            finally:
+                # Restore original client
+                shared.github_client = original_client
 
 
 class TestPagination:
@@ -210,29 +265,45 @@ class TestPagination:
     @pytest.mark.asyncio
     async def test_pagination_handling(self, mock_context):
         """Test handling of paginated responses."""
-        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client'), \
-             patch('github_stars_mcp.tools.starred_repo_list.safe_github_request') as mock_request, \
+        from github_stars_mcp import shared
+        
+        with patch('github_stars_mcp.tools.starred_repo_list.ensure_github_client') as mock_ensure, \
              patch('github_stars_mcp.tools.starred_repo_list.validate_github_username') as mock_validate:
             
-            mock_validate.return_value = "testuser"
-            mock_request.return_value = {
-                "edges": [
-                    {
-                        "node": {
-                            "id": f"repo{i}",
-                            "nameWithOwner": f"user/repo{i}",
-                            "stargazerCount": 100 + i,
-                            "url": f"https://github.com/user/repo{i}"
-                        }
-                    } for i in range(50)
-                ],
-                "totalCount": 100,
-                "pageInfo": {"hasNextPage": True, "endCursor": "cursor50"}
-            }
+            # Set up mocks
+            mock_github_client = AsyncMock()
+            mock_github_client.get_user_starred_repositories = AsyncMock()
+            mock_github_client.token = "fake_token"
             
-            result = await _get_user_starred_repositories_impl(mock_context, "testuser")
+            # Directly set shared.github_client to our mock
+            original_client = shared.github_client
+            shared.github_client = mock_github_client
             
-            assert len(result.repositories) == 50
-            assert result.total_count == 100
-            assert result.has_next_page is True
-            assert result.end_cursor == "cursor50"
+            try:
+                mock_ensure.return_value = mock_github_client
+                mock_validate.return_value = "testuser"
+                
+                mock_github_client.get_user_starred_repositories.return_value = {
+                    "edges": [
+                        {
+                            "node": {
+                                "id": f"repo{i}",
+                                "nameWithOwner": f"user/repo{i}",
+                                "stargazerCount": 100 + i,
+                                "url": f"https://github.com/user/repo{i}"
+                            }
+                        } for i in range(50)
+                    ],
+                    "totalCount": 100,
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor50"}
+                }
+                
+                result = await _get_user_starred_repositories_impl(mock_context, "testuser")
+                
+                assert len(result.repositories) == 50
+                assert result.total_count == 100
+                assert result.has_next_page is True
+                assert result.end_cursor == "cursor50"
+            finally:
+                # Restore original client
+                shared.github_client = original_client

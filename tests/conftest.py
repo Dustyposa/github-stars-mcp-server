@@ -33,11 +33,11 @@ def test_settings() -> Settings:
 @pytest.fixture
 def mock_context() -> Context:
     """Create a mock FastMCP context for testing."""
-    context = MagicMock(spec=Context)
-    context.info = MagicMock()
-    context.warning = MagicMock()
-    context.error = MagicMock()
-    context.debug = MagicMock()
+    context = AsyncMock(spec=Context)
+    context.info = AsyncMock()
+    context.warning = AsyncMock()
+    context.error = AsyncMock()
+    context.debug = AsyncMock()
     return context
 
 

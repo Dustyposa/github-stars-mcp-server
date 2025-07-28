@@ -27,7 +27,7 @@ def _parse_repository_data(edge: dict) -> StartedRepository:
     """
     repo_data = edge["node"]
     name_with_owner: str = repo_data["nameWithOwner"]
-    name, owner = name_with_owner.split("/", maxsplit=1)
+    owner, name = name_with_owner.split("/", maxsplit=1)
 
     return StartedRepository(
         id=repo_data["id"],

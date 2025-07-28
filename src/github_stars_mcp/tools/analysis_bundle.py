@@ -156,19 +156,51 @@ async def create_full_analysis_bundle(
     ctx: Context,
     username: str | None = None,
 ) -> StarredRepositoriesWithReadmeResponse:
-    """Create comprehensive analysis bundle for user starred repositories.
-
-    This high-level tool combines multiple operations to generate a complete
-    analysis of a user's starred repositories, including detailed information
-    and statistical analysis.
+    """Generate a comprehensive analysis bundle combining starred repositories with their detailed information.
+    
+    **When to use this tool:**
+    - When you need a complete overview of a user's starred repositories with full details
+    - For comprehensive user profile analysis and technology interest mapping
+    - To generate detailed reports about a user's GitHub activity and preferences
+    - When building recommendation systems or user behavior analysis
+    
+    **What this tool does:**
+    - Fetches up to 100 most recently starred repositories
+    - Retrieves README content for each repository
+    - Combines repository metadata with documentation content
+    - Provides a unified response with all information in one place
+    
+    **Key advantages:**
+    - One-stop solution for complete repository analysis
+    - Optimized performance with concurrent processing (10 concurrent requests)
+    - Handles pagination automatically to get comprehensive data
+    - Perfect for AI agents needing full context about user interests
+    
+    **Performance characteristics:**
+    - Processes up to 100 repositories with README content
+    - Uses intelligent batching and concurrency control
+    - Typically completes in 10-30 seconds depending on repository count
+    - Gracefully handles API rate limits and partial failures
+    
+    **Usage patterns:**
+    - Use as a starting point for comprehensive user analysis
+    - Ideal for generating user technology profiles and interests
+    - Perfect for understanding user's project preferences and documentation quality
+    - Great for building personalized recommendations based on starred content
 
     Args:
-        username: GitHub username to analyze (optional, uses authenticated user if not provided)
+        username: GitHub username to analyze. If None or empty, analyzes the authenticated user's starred repositories.
 
     Returns:
-        StarredRepositoriesWithReadmeResponse containing complete repository analysis
+        StarredRepositoriesWithReadmeResponse containing:
+        - total_count: Number of repositories analyzed
+        - repositories: List of StartedRepoWithReadme objects, each including:
+          * Basic repository metadata (name, description, stars, language)
+          * Complete README content as plain text
+          * Repository topics and additional metadata
 
     Raises:
-        GitHubAPIError: If GitHub API requests fail
+        GitHubAPIError: If GitHub API requests fail, rate limits exceeded, or authentication issues
+        ValidationError: If username format is invalid
     """
     return await _create_full_analysis_bundle_impl(ctx, username)

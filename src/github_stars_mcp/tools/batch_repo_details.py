@@ -135,18 +135,43 @@ async def get_batch_repo_details(
     ctx: Context,
     repo_ids: list[str],
 ) -> BatchRepositoryDetailsResponse:
-    """
-    接收一个仓库标识符的列表，并一次性批量返回所有这些仓库的详细信息，包括它们的 README 内容。当你需要比较少数几个特定项目，或者在获取到一个仓库列表后需要进一步获取它们的详细内容时，使用此工具以提高效率。
+    """Efficiently fetch detailed information for multiple GitHub repositories in a single operation.
+    
+    **When to use this tool:**
+    - When you need detailed info for multiple repositories simultaneously
+    - To compare several repositories and their documentation
+    - After getting a starred repository list and wanting details for specific repos
+    - For bulk analysis of repository collections (up to 100 repos)
+    
+    **Key features:**
+    - Processes up to 100 repositories per request
+    - Concurrent fetching for optimal performance
+    - Returns README content for all requested repositories
+    - Handles partial failures gracefully (some repos may fail while others succeed)
+    
+    **Performance benefits:**
+    - Much faster than calling get_repo_details multiple times
+    - Optimized concurrent processing with rate limit management
+    - Reduces total API calls and response time
+    - Ideal for bulk operations and comparative analysis
+    
+    **Usage patterns:**
+    - Use after filtering starred repositories to get details for interesting ones
+    - Perfect for analyzing repository collections by topic or language
+    - Combine with starred repository data for comprehensive user analysis
+    - Use for building repository comparison reports
 
     Args:
-        ctx: FastMCP context
-        repo_ids: List of repository IDs to fetch details for
+        repo_ids: List of repository identifiers in 'owner/repository' format (max 100 items)
 
     Returns:
-        BatchRepositoryDetailsResponse containing repository details
+        BatchRepositoryDetailsResponse containing:
+        - data: Dictionary mapping repo_id to RepositoryDetails objects
+        - Each RepositoryDetails includes README content, description, topics, and languages
+        - Failed repositories are omitted from results (check logs for errors)
 
     Raises:
-        ValidationError: If repo_ids validation fails
-        GitHubAPIError: If GitHub API request fails
+        ValidationError: If repo_ids list is empty, too large (>100), or contains invalid formats
+        GitHubAPIError: If GitHub API request fails or authentication issues occur
     """
     return await _get_batch_repo_details_impl(ctx, repo_ids)

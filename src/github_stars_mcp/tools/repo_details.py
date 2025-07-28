@@ -59,18 +59,38 @@ async def _get_repo_details_impl(ctx: Context, repo_id: str) -> RepositoryDetail
 @mcp.tool
 @log_function_call("get_repo_details")
 async def get_repo_details(ctx: Context, repo_id: str) -> RepositoryDetails:
-    """
-    为一个指定的 GitHub 仓库检索其详细信息，包括 README.md 文件的纯文本内容。当需要深入了解某一个特定项目时，或者当用户明确询问关于单个项目的信息时，使用此工具。
+    """Fetch comprehensive details for a single GitHub repository, including README content.
+    
+    **When to use this tool:**
+    - When you need detailed information about a specific repository
+    - To get the README content for understanding project purpose and usage
+    - When a user asks specific questions about a single repository
+    - For in-depth analysis of a particular project
+    
+    **Key features:**
+    - Retrieves complete README.md content as plain text
+    - Provides repository metadata and statistics
+    - Optimized for single repository queries
+    - Fast response time for individual repository analysis
+    
+    **Usage patterns:**
+    - Use after getting repository lists to dive deeper into specific repos
+    - Ideal for answering questions about project documentation
+    - Combine with starred repository lists for targeted analysis
+    - Perfect for README content analysis and project understanding
 
     Args:
-        ctx: FastMCP context
-        repo_id: Repository ID to fetch details for
+        repo_id: Repository identifier in 'owner/repository' format (e.g., 'microsoft/vscode')
 
     Returns:
-        RepositoryDetails containing repository information and README content
+        RepositoryDetails containing:
+        - readme_content: Full README.md content as plain text
+        - description: Repository description
+        - topics: List of repository topics/tags
+        - languages: List of programming languages used
 
     Raises:
-        ValidationError: If repo_id format is invalid
-        GitHubAPIError: If GitHub API request fails
+        ValidationError: If repo_id format is invalid (must be 'owner/repo' format)
+        GitHubAPIError: If repository not found, access denied, or API request fails
     """
     return await _get_repo_details_impl(ctx, repo_id)

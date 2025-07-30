@@ -55,8 +55,6 @@ except RuntimeError:
 
 def main() -> None:
     """Main entry point for the MCP server."""
-    # Redirect stdout to stderr for MCP server execution
-    sys.stdout = sys.stderr
 
     try:
         logger.info(

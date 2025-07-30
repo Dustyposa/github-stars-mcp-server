@@ -20,13 +20,13 @@ class Settings(BaseSettings):
         if normalized not in valid_levels:
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return normalized
-
-    class Config:
-        """Pydantic configuration."""
-
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    #
+    # class Config:
+    #     """Pydantic configuration."""
+    #
+    #     env_file = ".env"
+    #     env_file_encoding = "utf-8"
+    #     case_sensitive = False
 
 
 # Global settings instance

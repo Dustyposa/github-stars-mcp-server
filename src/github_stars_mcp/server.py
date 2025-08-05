@@ -17,6 +17,9 @@ sys.stdout = _original_stdout
 # Import tools to register them
 from .tools import analysis_bundle, batch_repo_details, repo_details, starred_repo_list
 
+# Import resources to register them
+from .resources import user_info
+
 
 # Logging is now configured in shared.py when the module is imported
 

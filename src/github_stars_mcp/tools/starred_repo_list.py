@@ -104,39 +104,14 @@ async def _get_user_starred_repositories_impl(
 async def get_user_starred_repositories(
     ctx: Context, username: str = "", cursor: str = ""
 ) -> StarredRepositoriesResponse:
-    """Retrieve a paginated list of GitHub repositories starred by a specific user.
-    
-    **When to use this tool:**
-    - When you need to explore what repositories a user has starred
-    - To analyze a user's interests and technology preferences
-    - As the first step before getting detailed repository information
-    - When building user profiles or recommendation systems
-    
-    **Key features:**
-    - Returns up to 100 repositories per request with pagination support
-    - Includes basic repository metadata (name, description, language, star count)
-    - Supports both authenticated user queries and public user queries
-    - Provides pagination cursors for fetching additional pages
-    
-    **Usage patterns:**
-    - Call with empty username to get authenticated user's starred repos
-    - Use cursor parameter to fetch subsequent pages of results
-    - Combine with get_batch_repo_details for comprehensive analysis
+    """Retrieve a paginated list of GitHub repositories starred by a user.
+    Returns up to 100 repositories per request with basic metadata and pagination support.
 
     Args:
-        username: GitHub username to query. Leave empty ("") to use the authenticated user's starred repositories.
-        cursor: Pagination cursor from previous response. Leave empty ("") for the first page.
+        username: GitHub username to query. Leave empty ("") for authenticated user.
+        cursor: Pagination cursor from previous response. Leave empty ("") for first page.
 
     Returns:
-        StarredRepositoriesResponse containing:
-        - repositories: List of starred repository objects with metadata
-        - total_count: Total number of starred repositories
-        - has_next_page: Boolean indicating if more pages are available
-        - end_cursor: Cursor for fetching the next page
-
-    Raises:
-        AuthenticationError: If GitHub token is invalid or missing
-        GitHubAPIError: If GitHub API request fails or rate limit exceeded
-        ValidationError: If username format is invalid (must be valid GitHub username)
+        StarredRepositoriesResponse with repositories list, total count, and pagination info.
     """
     return await _get_user_starred_repositories_impl(ctx, username, cursor)

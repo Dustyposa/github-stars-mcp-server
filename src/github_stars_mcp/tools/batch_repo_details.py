@@ -136,42 +136,12 @@ async def get_batch_repo_details(
     repo_ids: list[str],
 ) -> BatchRepositoryDetailsResponse:
     """Efficiently fetch detailed information for multiple GitHub repositories in a single operation.
-    
-    **When to use this tool:**
-    - When you need detailed info for multiple repositories simultaneously
-    - To compare several repositories and their documentation
-    - After getting a starred repository list and wanting details for specific repos
-    - For bulk analysis of repository collections (up to 100 repos)
-    
-    **Key features:**
-    - Processes up to 100 repositories per request
-    - Concurrent fetching for optimal performance
-    - Returns README content for all requested repositories
-    - Handles partial failures gracefully (some repos may fail while others succeed)
-    
-    **Performance benefits:**
-    - Much faster than calling get_repo_details multiple times
-    - Optimized concurrent processing with rate limit management
-    - Reduces total API calls and response time
-    - Ideal for bulk operations and comparative analysis
-    
-    **Usage patterns:**
-    - Use after filtering starred repositories to get details for interesting ones
-    - Perfect for analyzing repository collections by topic or language
-    - Combine with starred repository data for comprehensive user analysis
-    - Use for building repository comparison reports
+    Processes up to 100 repositories with concurrent fetching and returns README content for all.
 
     Args:
         repo_ids: List of repository identifiers in 'owner/repository' format (max 100 items)
 
     Returns:
-        BatchRepositoryDetailsResponse containing:
-        - data: Dictionary mapping repo_id to RepositoryDetails objects
-        - Each RepositoryDetails includes README content, description, topics, and languages
-        - Failed repositories are omitted from results (check logs for errors)
-
-    Raises:
-        ValidationError: If repo_ids list is empty, too large (>100), or contains invalid formats
-        GitHubAPIError: If GitHub API request fails or authentication issues occur
+        BatchRepositoryDetailsResponse with data dictionary mapping repo_id to RepositoryDetails.
     """
     return await _get_batch_repo_details_impl(ctx, repo_ids)

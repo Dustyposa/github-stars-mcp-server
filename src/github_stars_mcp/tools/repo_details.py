@@ -60,37 +60,12 @@ async def _get_repo_details_impl(ctx: Context, repo_id: str) -> RepositoryDetail
 @log_function_call("get_repo_details")
 async def get_repo_details(ctx: Context, repo_id: str) -> RepositoryDetails:
     """Fetch comprehensive details for a single GitHub repository, including README content.
-    
-    **When to use this tool:**
-    - When you need detailed information about a specific repository
-    - To get the README content for understanding project purpose and usage
-    - When a user asks specific questions about a single repository
-    - For in-depth analysis of a particular project
-    
-    **Key features:**
-    - Retrieves complete README.md content as plain text
-    - Provides repository metadata and statistics
-    - Optimized for single repository queries
-    - Fast response time for individual repository analysis
-    
-    **Usage patterns:**
-    - Use after getting repository lists to dive deeper into specific repos
-    - Ideal for answering questions about project documentation
-    - Combine with starred repository lists for targeted analysis
-    - Perfect for README content analysis and project understanding
+    Retrieves complete repository metadata, statistics, and README.md content as plain text.
 
     Args:
         repo_id: Repository identifier in 'owner/repository' format (e.g., 'microsoft/vscode')
 
     Returns:
-        RepositoryDetails containing:
-        - readme_content: Full README.md content as plain text
-        - description: Repository description
-        - topics: List of repository topics/tags
-        - languages: List of programming languages used
-
-    Raises:
-        ValidationError: If repo_id format is invalid (must be 'owner/repo' format)
-        GitHubAPIError: If repository not found, access denied, or API request fails
+        RepositoryDetails with readme_content, description, topics, and languages.
     """
     return await _get_repo_details_impl(ctx, repo_id)

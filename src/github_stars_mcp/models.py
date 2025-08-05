@@ -47,7 +47,7 @@ class StartedRepoWithReadme(StartedRepository):
     model_config = ConfigDict(populate_by_name=True)
 
     readme_content: str | None = Field(
-        default=None, description="Repository README content"
+        default=None, description="Repository README content", alias="readmeContent"
     )
 
 
@@ -84,7 +84,7 @@ class RepositoryDetails(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    readme_content: str | None = Field(default=None, description="README content")
+    readme_content: str | None = Field(default=None, description="README content", alias="readmeContent")
 
 
 class BatchRepositoryDetailsResponse(BaseModel):
